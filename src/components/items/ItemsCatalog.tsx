@@ -1869,6 +1869,7 @@ export default function ItemsCatalog({
       normalizedName !== editingItem.name.trim() ||
       normalizedCategory !== editingItem.category.trim() ||
       normalizedDescription !== originalDescription ||
+      formData.pricingType !== editingItem.pricing_type ||
       normalizedPriceInCents !== originalPriceInCents ||
       normalizedPromotionalPriceInCents !== originalPromotionalPriceInCents ||
       normalizedServesPeople !== editingItem.serves_people ||
@@ -2792,8 +2793,8 @@ export default function ItemsCatalog({
       ) : null}
 
       {editingItem ? (
-        <div className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
-          <div className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:p-5">
+        <div className="fixed inset-0 z-40 flex items-end overflow-x-hidden overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
+          <div className="box-border max-h-[calc(100dvh-1.5rem)] w-full overflow-x-hidden overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:p-5">
             <div className="mb-4 flex items-center justify-between">
               <Title as="h2" size="modal">
                 Editar item

@@ -147,6 +147,31 @@ function formatCurrency(value: number) {
   });
 }
 
+function formatWeightMaskInput(raw: string) {
+  const digitsOnly = raw.replace(/\D/g, "").slice(0, 9);
+
+  if (!digitsOnly) {
+    return "";
+  }
+
+  const valueKg = Number(digitsOnly) / 1000;
+
+  return valueKg.toLocaleString("pt-BR", {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  });
+}
+
+function maskedWeightToNumber(masked: string) {
+  const digitsOnly = masked.replace(/\D/g, "");
+
+  if (!digitsOnly) {
+    return 0;
+  }
+
+  return Number(digitsOnly) / 1000;
+}
+
 function formatMesaItemName(item: MesaItem) {
   if (item.pricingType === "PESO" && item.weightKg && item.weightKg > 0) {
     return `${item.name} (${item.weightKg.toLocaleString("pt-BR", {
@@ -925,9 +950,10 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   );
   const selectedItemUnitTotal =
     selectedCatalogItemUnitPrice + selectedAdditionalUnitTotal;
-  const isSelectedCatalogItemByWeight = selectedCatalogItem?.pricing_type === "PESO";
+  const isSelectedCatalogItemByWeight =
+    selectedCatalogItem?.pricing_type === "PESO";
   const selectedItemQuantity = Math.max(1, Number(itemDraft.quantity) || 1);
-  const selectedItemWeightKg = Math.max(0, Number(itemDraft.weightKg) || 0);
+  const selectedItemWeightKg = Math.max(0, maskedWeightToNumber(itemDraft.weightKg));
   const selectedBaseTotal = isSelectedCatalogItemByWeight
     ? selectedCatalogItemUnitPrice * selectedItemWeightKg
     : selectedCatalogItemUnitPrice * selectedItemQuantity;
@@ -1238,7 +1264,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     );
     const isByWeight = selectedItem?.pricing_type === "PESO";
     const quantity = isByWeight ? 1 : Number(itemDraft.quantity);
-    const weightKg = isByWeight ? Number(itemDraft.weightKg) : null;
+    const weightKg = isByWeight ? maskedWeightToNumber(itemDraft.weightKg) : null;
 
     if (!selectedItem) {
       toast.error(
@@ -2618,13 +2644,12 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                         onChange={(event) =>
                           setItemDraft((prev) => ({
                             ...prev,
-                            weightKg: event.target.value,
+                            weightKg: formatWeightMaskInput(event.target.value),
                           }))
                         }
-                        type="number"
-                        min={0.001}
-                        step="0.001"
-                        placeholder="Ex: 0.750"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="0,000"
                         className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-2 text-sm text-[var(--app-text)] outline-none"
                       />
                     </label>
@@ -2738,10 +2763,13 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                     <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--app-border)] pt-2 text-base font-semibold text-[var(--app-text)]">
                       <span>
                         {isSelectedCatalogItemByWeight
-                          ? `Total (${selectedItemWeightKg.toLocaleString("pt-BR", {
-                              minimumFractionDigits: 3,
-                              maximumFractionDigits: 3,
-                            })} kg)`
+                          ? `Total (${selectedItemWeightKg.toLocaleString(
+                              "pt-BR",
+                              {
+                                minimumFractionDigits: 3,
+                                maximumFractionDigits: 3,
+                              },
+                            )} kg)`
                           : `Total (${selectedItemQuantity}x)`}
                       </span>
                       <span>{formatCurrency(selectedItemTotal)}</span>
