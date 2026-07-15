@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #111827;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    var(--font-app),
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Helvetica,
+    Arial,
+    sans-serif;
+  font-feature-settings: "kern" 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+a,
+summary,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+  cursor: pointer;
+}
+
+select {
+  cursor: pointer;
+}
+
+select option,
+select optgroup {
+  background: #ffffff;
+  color: #111827;
+}
+
+select option {
+  padding: 8px 10px;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
