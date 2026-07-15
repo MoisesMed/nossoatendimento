@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   Boxes,
-  House,
   LogIn,
   Search,
   SquareKanban,
@@ -29,7 +28,6 @@ const linksByRole = {
     { href: "/cardapio", label: "Cardapio" },
   ],
   DONO: [
-    { href: "/home", label: "Home" },
     { href: "/mesas", label: "Mesas" },
     { href: "/cardapio", label: "Cardápio" },
     { href: "/estoque", label: "Estoque" },
@@ -50,7 +48,6 @@ export default function AppNavigation({
   > = {
     "/": LogIn,
     "/login": LogIn,
-    "/home": House,
     "/mesas": UtensilsCrossed,
     "/cardapio": Search,
     "/items": Search,

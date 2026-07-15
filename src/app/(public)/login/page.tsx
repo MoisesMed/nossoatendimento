@@ -69,7 +69,7 @@ export default function Page() {
       }
 
       if (Array.isArray(memberships) && memberships.length > 0) {
-        router.replace("/home");
+        router.replace("/mesas");
         return;
       }
 
@@ -86,7 +86,7 @@ export default function Page() {
         Array.isArray(membershipsAfterBootstrap) &&
         membershipsAfterBootstrap.length > 0
       ) {
-        router.replace("/home");
+        router.replace("/mesas");
         return;
       }
 
@@ -174,7 +174,7 @@ export default function Page() {
 
       setAccessWarning(null);
       setPendingConfirmationEmail(null);
-      router.replace("/home");
+      router.replace("/mesas");
     } catch (error) {
       if (
         error instanceof Error &&
@@ -194,7 +194,7 @@ export default function Page() {
 
       if (authData.session) {
         setPendingConfirmationEmail(null);
-        router.push("/home");
+        router.push("/mesas");
       } else {
         setPendingConfirmationEmail(authData.user?.email ?? data.email);
         toast.info("Cadastro realizado. Confirme seu email para continuar.");

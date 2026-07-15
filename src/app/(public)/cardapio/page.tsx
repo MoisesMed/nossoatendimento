@@ -1,9 +1,5 @@
-import Link from "next/link";
-import AppTopHeader from "@/components/layout/AppTopHeader";
-import AppNavigation from "@/components/layout/AppNavigation";
 import ItemsCatalog from "@/components/items/ItemsCatalog";
 import { requireTenantContext } from "@/lib/tenantContext";
-import { resolveTenantTheme, themeToCssVars } from "@/lib/theme";
 import { createClient } from "@/utils/supabase/server";
 
 type MenuItem = {
@@ -36,15 +32,9 @@ async function resolveStorageUrl(
     return null;
   }
 
-  const { data: signedData, error: signedError } = await supabase.storage
+  const { data: publicData } = supabase.storage
     .from(STORAGE_BUCKET)
-    .createSignedUrl(path, 60 * 60 * 24 * 30);
-
-  if (!signedError && signedData?.signedUrl) {
-    return signedData.signedUrl;
-  }
-
-  const { data: publicData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+    .getPublicUrl(path);
   return publicData?.publicUrl ?? null;
 }
 
@@ -56,11 +46,7 @@ export default async function CardapioPage() {
 
   const isAuthenticated = Boolean(user);
 
-  let tenantName = "MANJA";
-  let tenantTheme: unknown = null;
   let userRole: "DONO" | "ATENDENTE" | "USUARIO" = "USUARIO";
-  let fullName = "Usuario";
-  let userEmail = "sem-email";
   let initialItems: MenuItem[] = [];
   let initialCategories: string[] = [];
   let initialCategoryImages: Record<string, CategoryImageData> = {};
@@ -70,13 +56,6 @@ export default async function CardapioPage() {
     const { supabase: authSupabase, tenant } = tenantContext;
 
     userRole = tenantContext.userRole;
-    fullName =
-      (typeof tenantContext.user.user_metadata?.full_name === "string" &&
-        tenantContext.user.user_metadata.full_name.trim()) ||
-      "Usuario";
-    userEmail = tenantContext.user.email ?? "sem-email";
-    tenantName = tenant.name;
-    tenantTheme = tenant.theme;
 
     const { data: itemsData } = await authSupabase
       .from("menu_items")
@@ -121,7 +100,10 @@ export default async function CardapioPage() {
 
     const categorySignedEntries = await Promise.all(
       typedCategories.map(async (category) => {
-        const imageUrl = await resolveStorageUrl(authSupabase, category.image_path);
+        const imageUrl = await resolveStorageUrl(
+          authSupabase,
+          category.image_path,
+        );
 
         return {
           name: category.name,
@@ -163,20 +145,6 @@ export default async function CardapioPage() {
       new Set([...fromCategories, ...missingFromItems]),
     );
   } else {
-    const { data: publicTenant } = await supabase.rpc("get_public_tenant", {
-      p_tenant_slug: PUBLIC_TENANT_SLUG,
-    });
-
-    const typedTenant =
-      Array.isArray(publicTenant) && publicTenant.length > 0
-        ? (publicTenant[0] as { name: string; theme: unknown })
-        : null;
-
-    if (typedTenant) {
-      tenantName = typedTenant.name;
-      tenantTheme = typedTenant.theme;
-    }
-
     const { data: menuRows } = await supabase.rpc("get_public_menu", {
       p_tenant_slug: PUBLIC_TENANT_SLUG,
     });
@@ -222,7 +190,9 @@ export default async function CardapioPage() {
         };
       }),
     );
-    const itemImageMap = new Map(itemImageEntries.map((entry) => [entry.id, entry.imageUrl]));
+    const itemImageMap = new Map(
+      itemImageEntries.map((entry) => [entry.id, entry.imageUrl]),
+    );
 
     initialItems = typedRows.map((row) => ({
       id: row.id,
@@ -248,21 +218,20 @@ export default async function CardapioPage() {
 
     initialCategories = orderedCategoryNames;
 
-    const firstCategoryPathByName = typedRows.reduce<Record<string, string | null>>(
-      (acc, row) => {
-        const categoryName = row.category?.trim();
-        if (!categoryName) {
-          return acc;
-        }
-
-        if (!(categoryName in acc)) {
-          acc[categoryName] = row.category_image_path ?? null;
-        }
-
+    const firstCategoryPathByName = typedRows.reduce<
+      Record<string, string | null>
+    >((acc, row) => {
+      const categoryName = row.category?.trim();
+      if (!categoryName) {
         return acc;
-      },
-      {},
-    );
+      }
+
+      if (!(categoryName in acc)) {
+        acc[categoryName] = row.category_image_path ?? null;
+      }
+
+      return acc;
+    }, {});
 
     const categoryImageEntries = await Promise.all(
       orderedCategoryNames.map(async (categoryName) => {
@@ -285,62 +254,13 @@ export default async function CardapioPage() {
       return acc;
     }, {});
   }
-  const resolvedTenantTheme = resolveTenantTheme(tenantTheme);
-  const pageMaxWidthClass = isAuthenticated ? "max-w-[1280px]" : "max-w-[800px]";
 
   return (
-    <main
-      className="min-h-screen bg-[var(--app-bg)]"
-      style={themeToCssVars(resolvedTenantTheme)}
-    >
-      {isAuthenticated ? (
-        <AppTopHeader
-          fullName={fullName}
-          userEmail={userEmail}
-          tenantName={tenantName}
-          userRole={userRole}
-        />
-      ) : (
-        <>
-          <header className="sticky top-0 z-30 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 backdrop-blur">
-            <div className={`mx-auto w-full ${pageMaxWidthClass} px-4 py-3 sm:px-6`}>
-              <div className="flex items-center justify-between gap-3">
-                <Link href="/cardapio" className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-surface-muted)] text-sm font-semibold text-[var(--app-text)]">
-                    MG
-                  </div>
-                  <div>
-                    <p className="text-[15px] font-semibold leading-tight text-[var(--app-text)]">
-                      {tenantName}
-                    </p>
-                    <p className="text-[12px] font-normal text-[var(--app-muted)]">
-                      Cardapio da loja
-                    </p>
-                  </div>
-                </Link>
-
-                <div className="hidden md:flex">
-                  <AppNavigation userRole="VISITANTE" />
-                </div>
-              </div>
-            </div>
-          </header>
-
-          <AppNavigation
-            userRole="VISITANTE"
-            variant="mobile-footer"
-            className="fixed inset-x-0 bottom-0 z-40 md:hidden"
-          />
-        </>
-      )}
-      <div className={`mx-auto flex min-h-screen w-full ${pageMaxWidthClass} flex-col pb-28`}>
-        <ItemsCatalog
-          initialItems={initialItems}
-          initialCategories={initialCategories}
-          initialCategoryImages={initialCategoryImages}
-          userRole={userRole}
-        />
-      </div>
-    </main>
+    <ItemsCatalog
+      initialItems={initialItems}
+      initialCategories={initialCategories}
+      initialCategoryImages={initialCategoryImages}
+      userRole={userRole}
+    />
   );
 }

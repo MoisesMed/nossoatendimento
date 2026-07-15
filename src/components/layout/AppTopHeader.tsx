@@ -42,7 +42,7 @@ export default function AppTopHeader({
         <div className="mx-auto w-full max-w-[1280px] px-4 py-3 sm:px-6">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-8">
-              <Link href="/home" className="flex items-center gap-3">
+              <Link href="/mesas" className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-surface-muted)] text-sm font-semibold text-[var(--app-text)]">
                   MG
                 </div>

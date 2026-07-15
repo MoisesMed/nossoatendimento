@@ -184,9 +184,8 @@ export default function ItemsCatalog({
     string | null
   >(null);
   const [categoryDetailsName, setCategoryDetailsName] = useState("");
-  const [categoryDetailsImageFile, setCategoryDetailsImageFile] = useState<
-    File | null
-  >(null);
+  const [categoryDetailsImageFile, setCategoryDetailsImageFile] =
+    useState<File | null>(null);
   const [categoryDetailsPreviewImageUrl, setCategoryDetailsPreviewImageUrl] =
     useState<string | null>(null);
   const [categoryDetailsImageName, setCategoryDetailsImageName] = useState("");
@@ -225,9 +224,9 @@ export default function ItemsCatalog({
   >(null);
   const transparentDragImageRef = useRef<HTMLImageElement | null>(null);
   const categorySectionRefs = useRef<Record<string, HTMLElement | null>>({});
-  const reorderDebounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const reorderDebounceTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const queuedCategoryOrderRef = useRef<string[]>(categories);
   const lastPersistedCategoryOrderRef = useRef<string[]>(categories);
 
@@ -589,7 +588,10 @@ export default function ItemsCatalog({
       const orderToPersist = queuedCategoryOrderRef.current;
 
       if (
-        areCategoryOrdersEqual(orderToPersist, lastPersistedCategoryOrderRef.current)
+        areCategoryOrdersEqual(
+          orderToPersist,
+          lastPersistedCategoryOrderRef.current,
+        )
       ) {
         return;
       }
@@ -856,7 +858,8 @@ export default function ItemsCatalog({
     });
     setFormData((prev) => ({
       ...prev,
-      category: prev.category === currentCategory ? nextCategory : prev.category,
+      category:
+        prev.category === currentCategory ? nextCategory : prev.category,
     }));
     if (activeCategoryFilter === currentCategory) {
       setActiveCategoryFilter(nextCategory);
@@ -942,7 +945,8 @@ export default function ItemsCatalog({
       let imagePath: string | undefined;
 
       if (newCategoryImageFile) {
-        const uploaded = await uploadImageMutation.mutateAsync(newCategoryImageFile);
+        const uploaded =
+          await uploadImageMutation.mutateAsync(newCategoryImageFile);
         imagePath = uploaded.imagePath;
       }
 
@@ -989,7 +993,9 @@ export default function ItemsCatalog({
       let imageUrl: string | null | undefined;
 
       if (categoryDetailsImageFile) {
-        const uploaded = await uploadImageMutation.mutateAsync(categoryDetailsImageFile);
+        const uploaded = await uploadImageMutation.mutateAsync(
+          categoryDetailsImageFile,
+        );
         imagePath = uploaded.imagePath;
         imageUrl = uploaded.imageUrl ?? null;
       } else if (categoryDetailsRemoveImage) {
@@ -1011,17 +1017,14 @@ export default function ItemsCatalog({
 
         setCategories((prev) => {
           const normalized = prev
-            .map((category) =>
-              category === currentName ? nextName : category,
-            )
+            .map((category) => (category === currentName ? nextName : category))
             .filter(Boolean);
           return Array.from(new Set(normalized));
         });
 
         setFormData((prev) => ({
           ...prev,
-          category:
-            prev.category === currentName ? nextName : prev.category,
+          category: prev.category === currentName ? nextName : prev.category,
         }));
 
         if (activeCategoryFilter === currentName) {
@@ -2147,7 +2150,7 @@ export default function ItemsCatalog({
                     <div className="flex flex-1 items-start justify-between gap-4">
                       <div className="min-w-0 flex-1">
                         <Title as="h3" size="card" className="line-clamp-2">
-                          {`ID ${item.code} - ${item.name}`}
+                          {`${item.code} - ${item.name}`}
                         </Title>
 
                         <Text
@@ -2606,9 +2609,7 @@ export default function ItemsCatalog({
 
               <button
                 type="submit"
-                disabled={
-                  isEditBusy || isUploadingImage || !hasEditItemChanges
-                }
+                disabled={isEditBusy || isUploadingImage || !hasEditItemChanges}
                 className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:opacity-70"
               >
                 {isEditBusy || isUploadingImage ? (
@@ -2761,7 +2762,9 @@ export default function ItemsCatalog({
                 <FormInput
                   value={categoryDetailsName}
                   disabled={Boolean(renamingCategory)}
-                  onChange={(event) => setCategoryDetailsName(event.target.value)}
+                  onChange={(event) =>
+                    setCategoryDetailsName(event.target.value)
+                  }
                 />
               </FormLabel>
 

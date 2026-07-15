@@ -1027,9 +1027,8 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     }
 
     try {
-      const createdItem = await createCatalogItemMutation.mutateAsync(
-        quickCatalogItemForm,
-      );
+      const createdItem =
+        await createCatalogItemMutation.mutateAsync(quickCatalogItemForm);
 
       setCatalogItems((prev) =>
         [...prev, createdItem].sort((a, b) => a.name.localeCompare(b.name)),
@@ -1155,7 +1154,10 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       ? mesaForDetail.seats * Math.max(0, Number(dailyCouvertValue) || 0)
       : 0;
     const grandTotal = subtotal + couvertTotal;
-    const paid = mesaPayments.reduce((total, payment) => total + payment.amount, 0);
+    const paid = mesaPayments.reduce(
+      (total, payment) => total + payment.amount,
+      0,
+    );
     const remaining = Math.max(0, grandTotal - paid);
 
     setIsClosingComanda(true);
@@ -1647,7 +1649,9 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                         onClick={handleRequestCloseComanda}
                         className="mb-3 inline-flex w-full items-center justify-center rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {isClosingComanda ? "Encerrando..." : "Encerrar comanda"}
+                        {isClosingComanda
+                          ? "Encerrando..."
+                          : "Encerrar comanda"}
                       </button>
 
                       <div className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-2">
@@ -1865,7 +1869,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
 
                             {catalogItems.map((item) => (
                               <option key={item.id} value={item.id}>
-                                {`ID ${item.code} - ${item.name}`}
+                                {`${item.code} - ${item.name}`}
                               </option>
                             ))}
 
@@ -1904,21 +1908,17 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                           <input
                             value={
                               selectedCatalogItem
-                                ? (
-                                    selectedCatalogItem.promotional_price !==
-                                      null &&
-                                    selectedCatalogItem.promotional_price > 0 &&
-                                    selectedCatalogItem.promotional_price <
-                                      selectedCatalogItem.price
-                                      ? selectedCatalogItem.promotional_price
-                                      : selectedCatalogItem.price
-                                  ).toLocaleString(
-                                    "pt-BR",
-                                    {
-                                      style: "currency",
-                                      currency: "BRL",
-                                    },
-                                  )
+                                ? (selectedCatalogItem.promotional_price !==
+                                    null &&
+                                  selectedCatalogItem.promotional_price > 0 &&
+                                  selectedCatalogItem.promotional_price <
+                                    selectedCatalogItem.price
+                                    ? selectedCatalogItem.promotional_price
+                                    : selectedCatalogItem.price
+                                  ).toLocaleString("pt-BR", {
+                                    style: "currency",
+                                    currency: "BRL",
+                                  })
                                 : ""
                             }
                             disabled
@@ -2226,7 +2226,10 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
               </button>
             </div>
 
-            <form className="space-y-3" onSubmit={handleCreateCatalogItemFromMesa}>
+            <form
+              className="space-y-3"
+              onSubmit={handleCreateCatalogItemFromMesa}
+            >
               <label className="block space-y-1">
                 <span className="text-sm font-medium text-[var(--app-text)]">
                   Nome

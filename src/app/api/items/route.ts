@@ -44,13 +44,13 @@ async function withSignedImage(supabase: Awaited<ReturnType<typeof createClient>
     };
   }
 
-  const { data: signedData } = await supabase.storage
+  const { data: publicData } = supabase.storage
     .from(BUCKET)
-    .createSignedUrl(row.image_path, 60 * 60 * 24 * 30);
+    .getPublicUrl(row.image_path);
 
   return {
     ...row,
-    imageUrl: signedData?.signedUrl ?? null,
+    imageUrl: publicData?.publicUrl ?? null,
   };
 }
 
