@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Printer, ReceiptText } from "lucide-react";
+import { ChevronDown, ReceiptText } from "lucide-react";
 import { toast } from "react-toastify";
 
 type MesaPrintItem = {
@@ -9,6 +9,10 @@ type MesaPrintItem = {
   name: string;
   quantity: number;
   price: number;
+  pricingType?: "UNIDADE" | "PESO";
+  weightKg?: number;
+  additionalTitles?: string[];
+  additionalTotal?: number;
 };
 
 type ContaPrintMode = "PARCIAL" | "TOTAL";
@@ -27,6 +31,17 @@ function escapeHtml(value: string) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function formatPrintItemLabel(item: MesaPrintItem) {
+  if (item.pricingType === "PESO" && item.weightKg && item.weightKg > 0) {
+    return `1x ${item.name} (${item.weightKg.toLocaleString("pt-BR", {
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3,
+    })} kg)`;
+  }
+
+  return `${item.quantity}x ${item.name}`;
 }
 
 function buildPrintHtml({
@@ -50,13 +65,22 @@ function buildPrintHtml({
   const itemsHtml = items
     .map((item) => {
       const lineTotal = item.quantity * item.price;
+      const additionalTitles = item.additionalTitles ?? [];
+      const hasAdditionalTitles = additionalTitles.length > 0;
+      const additionalUnitTotal = Math.max(0, item.additionalTotal ?? 0);
+      const additionalLineTotal = additionalUnitTotal * item.quantity;
+      const hasAdditionals = hasAdditionalTitles || additionalLineTotal > 0;
+      const additionalLabel = hasAdditionalTitles
+        ? `+ ${additionalTitles.join(", ")}`
+        : "+ Adicionais";
+
       return `
         <div class="line-item">
           <div class="line-item-top">
-            <span>${escapeHtml(item.quantity.toString())}x ${escapeHtml(item.name)}</span>
+            <span>${escapeHtml(formatPrintItemLabel(item))}</span>
             <span>${formatCurrency(lineTotal)}</span>
           </div>
-          <div class="line-item-sub">${escapeHtml(formatCurrency(item.price))} cada</div>
+          ${hasAdditionals ? `<div class="line-item-extra"><span>${escapeHtml(additionalLabel)}</span><span>${formatCurrency(additionalLineTotal)}</span></div>` : ""}
         </div>
       `;
     })
@@ -134,9 +158,13 @@ function buildPrintHtml({
             font-weight: 700;
           }
 
-          .line-item-sub {
+          .line-item-extra {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
             color: #4b5563;
             font-size: 10px;
+            margin-left: 10px;
           }
 
           .total {
@@ -341,48 +369,50 @@ export default function MesaPrintActions({
   };
 
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2">
+    <div ref={menuRef} className="relative">
       <button
         type="button"
         disabled={disabled}
-        onClick={handlePrintComanda}
-        className="inline-flex items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+        onClick={() => setIsContaMenuOpen((current) => !current)}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <Printer className="h-4 w-4" /> Emitir comanda
+        <ReceiptText className="h-4 w-4" /> CONTA
+        <ChevronDown className="h-4 w-4" />
       </button>
 
-      <div ref={menuRef} className="relative">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setIsContaMenuOpen((current) => !current)}
-          className="inline-flex items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <ReceiptText className="h-4 w-4" /> Emitir conta{" "}
-          <ChevronDown className="h-4 w-4" />
-        </button>
+      {isContaMenuOpen ? (
+        <div className="absolute left-0 top-full z-30 mt-1 w-full min-w-[220px] rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-lg">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              handlePrintComanda();
+              setIsContaMenuOpen(false);
+            }}
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Emitir comanda
+          </button>
 
-        {isContaMenuOpen ? (
-          <div className="absolute left-0 top-full z-30 mt-1 w-44 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-lg">
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => handlePrintConta("PARCIAL")}
-              className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              PARCIAL
-            </button>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => handlePrintConta("TOTAL")}
-              className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              TOTAL
-            </button>
-          </div>
-        ) : null}
-      </div>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => handlePrintConta("PARCIAL")}
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Emitir conta parcial
+          </button>
+
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => handlePrintConta("TOTAL")}
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Emitir conta total
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

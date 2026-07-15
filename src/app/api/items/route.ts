@@ -20,6 +20,7 @@ type ItemRow = {
   description: string | null;
   price: number;
   promotional_price: number | null;
+  pricing_type: "UNIDADE" | "PESO";
   active: boolean;
   image_path: string | null;
   category: string;
@@ -32,6 +33,7 @@ const createItemSchema = z.object({
   description: z.string().trim().max(300).optional(),
   price: z.number().min(0).max(999999),
   promotionalPrice: z.number().min(0).max(999999).nullable().optional(),
+  pricingType: z.enum(["UNIDADE", "PESO"]).optional(),
   servesPeople: z.number().int().min(1).max(99).optional(),
   imagePath: z.string().trim().min(1).max(500).optional(),
 });
@@ -126,7 +128,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("menu_items")
-    .select("id, code, name, description, price, promotional_price, active, image_path, category, serves_people")
+    .select("id, code, name, description, price, promotional_price, pricing_type, active, image_path, category, serves_people")
     .eq("tenant_id", tenantId)
     .eq("active", true)
     .order("category", { ascending: true })
@@ -181,10 +183,11 @@ export async function POST(request: Request) {
         : null,
       price: parsed.data.price,
       promotional_price: parsed.data.promotionalPrice ?? null,
+      pricing_type: parsed.data.pricingType ?? "UNIDADE",
       serves_people: parsed.data.servesPeople ?? 1,
       image_path: parsed.data.imagePath ?? null,
     })
-    .select("id, code, name, description, price, promotional_price, active, image_path, category, serves_people")
+    .select("id, code, name, description, price, promotional_price, pricing_type, active, image_path, category, serves_people")
     .single();
 
   if (error) {

@@ -20,6 +20,7 @@ type ItemRow = {
   description: string | null;
   price: number;
   promotional_price: number | null;
+  pricing_type: "UNIDADE" | "PESO";
   active: boolean;
   image_path: string | null;
   category: string;
@@ -38,6 +39,7 @@ const updateItemSchema = z.object({
   description: z.string().trim().max(300).nullable().optional(),
   price: z.number().min(0).max(999999).optional(),
   promotionalPrice: z.number().min(0).max(999999).nullable().optional(),
+  pricingType: z.enum(["UNIDADE", "PESO"]).optional(),
   servesPeople: z.number().int().min(1).max(99).optional(),
   imagePath: z.string().trim().min(1).max(500).nullable().optional(),
 });
@@ -165,6 +167,9 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     ...(parsed.data.promotionalPrice !== undefined
       ? { promotional_price: parsed.data.promotionalPrice }
       : {}),
+    ...(parsed.data.pricingType !== undefined
+      ? { pricing_type: parsed.data.pricingType }
+      : {}),
     ...(parsed.data.servesPeople !== undefined ? { serves_people: parsed.data.servesPeople } : {}),
     ...(parsed.data.imagePath !== undefined ? { image_path: parsed.data.imagePath } : {}),
   };
@@ -179,7 +184,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .eq("active", true)
-    .select("id, code, name, description, price, promotional_price, active, image_path, category, serves_people")
+    .select("id, code, name, description, price, promotional_price, pricing_type, active, image_path, category, serves_people")
     .single();
 
   if (error) {

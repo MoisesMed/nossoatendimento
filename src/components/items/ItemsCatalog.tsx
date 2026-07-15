@@ -32,10 +32,22 @@ type MenuItem = {
   description: string | null;
   price: number;
   promotional_price: number | null;
+  pricing_type: "UNIDADE" | "PESO";
   serves_people: number;
   active: boolean;
   image_path: string | null;
   imageUrl: string | null;
+};
+
+type MenuAdditional = {
+  id: string;
+  menu_item_id: string;
+  item_name: string | null;
+  title: string;
+  description: string | null;
+  price: number;
+  sort_order: number;
+  active: boolean;
 };
 
 type CategoryImageData = {
@@ -47,9 +59,17 @@ type ItemForm = {
   category: string;
   name: string;
   description: string;
+  pricingType: "UNIDADE" | "PESO";
   servesPeople: string;
   priceMasked: string;
   promotionalPriceMasked: string;
+};
+
+type AdditionalForm = {
+  menuItemId: string;
+  title: string;
+  description: string;
+  price: string;
 };
 
 type PriceFieldKey = "priceMasked" | "promotionalPriceMasked";
@@ -134,11 +154,13 @@ function areCategoryOrdersEqual(left: string[], right: string[]) {
 
 export default function ItemsCatalog({
   initialItems,
+  initialAdditionals,
   initialCategories,
   initialCategoryImages,
   userRole,
 }: {
   initialItems: MenuItem[];
+  initialAdditionals: MenuAdditional[];
   initialCategories: string[];
   initialCategoryImages: Record<string, CategoryImageData>;
   userRole: "DONO" | "ATENDENTE" | "USUARIO";
@@ -153,6 +175,8 @@ export default function ItemsCatalog({
     normalizedInitialCategories[0] ?? UNCATEGORIZED_CATEGORY;
 
   const [items, setItems] = useState<MenuItem[]>(initialItems);
+  const [additionals, setAdditionals] =
+    useState<MenuAdditional[]>(initialAdditionals);
   const [categories, setCategories] = useState<string[]>(
     normalizedInitialCategories.length > 0
       ? normalizedInitialCategories
@@ -201,10 +225,30 @@ export default function ItemsCatalog({
   const [activeCategoryFilter, setActiveCategoryFilter] =
     useState<string>("ALL");
   const [itemSearchTerm, setItemSearchTerm] = useState("");
+  const [openAdditionalsModal, setOpenAdditionalsModal] = useState(false);
+  const [openCreateAdditional, setOpenCreateAdditional] = useState(false);
+  const [editingAdditionalId, setEditingAdditionalId] = useState<string | null>(
+    null,
+  );
+  const [additionalPendingDelete, setAdditionalPendingDelete] =
+    useState<MenuAdditional | null>(null);
+  const [additionalForm, setAdditionalForm] = useState<AdditionalForm>({
+    menuItemId: initialItems[0]?.id ?? "",
+    title: "",
+    description: "",
+    price: "",
+  });
+  const [additionalEditForm, setAdditionalEditForm] = useState<AdditionalForm>({
+    menuItemId: "",
+    title: "",
+    description: "",
+    price: "",
+  });
   const [formData, setFormData] = useState<ItemForm>({
     category: fallbackCategory,
     name: "",
     description: "",
+    pricingType: "UNIDADE",
     servesPeople: "1",
     priceMasked: DEFAULT_PRICE_MASK,
     promotionalPriceMasked: "",
@@ -265,6 +309,7 @@ export default function ItemsCatalog({
       description?: string;
       price: number;
       promotionalPrice?: number | null;
+      pricingType?: "UNIDADE" | "PESO";
       servesPeople?: number;
       imagePath?: string;
     }) => {
@@ -301,6 +346,7 @@ export default function ItemsCatalog({
         category: newItem.category,
         name: "",
         description: "",
+        pricingType: "UNIDADE",
         servesPeople: "1",
         priceMasked: DEFAULT_PRICE_MASK,
         promotionalPriceMasked: "",
@@ -332,6 +378,7 @@ export default function ItemsCatalog({
         description?: string | null;
         price?: number;
         promotionalPrice?: number | null;
+        pricingType?: "UNIDADE" | "PESO";
         servesPeople?: number;
         imagePath?: string | null;
       };
@@ -402,6 +449,129 @@ export default function ItemsCatalog({
         return;
       }
       toast.error("Não foi possível remover item.");
+    },
+  });
+
+  const createAdditionalMutation = useMutation({
+    mutationFn: async (payload: {
+      menuItemId: string;
+      title: string;
+      description?: string;
+      price: number;
+    }) => {
+      const response = await fetch("/api/items/additionals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = (await response.json().catch(() => ({}))) as {
+        data?: MenuAdditional;
+        error?: string;
+      };
+
+      if (!response.ok || !result.data) {
+        throw new Error(
+          result.error ?? `Falha ao criar adicional (HTTP ${response.status})`,
+        );
+      }
+
+      return result.data;
+    },
+    onSuccess: (newAdditional) => {
+      setAdditionals((prev) => [...prev, newAdditional]);
+      setAdditionalForm((prev) => ({
+        ...prev,
+        title: "",
+        description: "",
+        price: "",
+      }));
+      setOpenCreateAdditional(false);
+      toast.success("Adicional criado com sucesso.");
+    },
+    onError: (error) => {
+      if (error instanceof Error) {
+        toast.error(error.message);
+        return;
+      }
+      toast.error("Não foi possível criar adicional.");
+    },
+  });
+
+  const updateAdditionalMutation = useMutation({
+    mutationFn: async ({
+      additionalId,
+      payload,
+    }: {
+      additionalId: string;
+      payload: {
+        menuItemId?: string;
+        title?: string;
+        description?: string | null;
+        price?: number;
+      };
+    }) => {
+      const response = await fetch(`/api/items/additionals/${additionalId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = (await response.json().catch(() => ({}))) as {
+        data?: MenuAdditional;
+        error?: string;
+      };
+
+      if (!response.ok || !result.data) {
+        throw new Error(
+          result.error ??
+            `Falha ao atualizar adicional (HTTP ${response.status})`,
+        );
+      }
+
+      return result.data;
+    },
+    onSuccess: (updatedAdditional) => {
+      setAdditionals((prev) =>
+        prev.map((item) =>
+          item.id === updatedAdditional.id ? updatedAdditional : item,
+        ),
+      );
+      setEditingAdditionalId(null);
+      toast.success("Adicional atualizado com sucesso.");
+    },
+    onError: (error) => {
+      if (error instanceof Error) {
+        toast.error(error.message);
+        return;
+      }
+      toast.error("Não foi possível atualizar adicional.");
+    },
+  });
+
+  const removeAdditionalMutation = useMutation({
+    mutationFn: async (additionalId: string) => {
+      const response = await fetch(`/api/items/additionals/${additionalId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const result = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(result.error ?? "Falha ao remover adicional");
+      }
+    },
+    onSuccess: (_, additionalId) => {
+      setAdditionals((prev) => prev.filter((item) => item.id !== additionalId));
+      toast.success("Adicional removido com sucesso.");
+    },
+    onError: (error) => {
+      if (error instanceof Error) {
+        toast.error(error.message);
+        return;
+      }
+      toast.error("Não foi possível remover adicional.");
     },
   });
 
@@ -549,6 +719,9 @@ export default function ItemsCatalog({
   });
 
   const isCreateBusy = createItemMutation.isPending;
+  const isCreateAdditionalBusy = createAdditionalMutation.isPending;
+  const isEditAdditionalBusy = updateAdditionalMutation.isPending;
+  const isDeleteAdditionalBusy = removeAdditionalMutation.isPending;
   const isEditBusy = updateItemMutation.isPending;
   const isCreateCategoryBusy = createCategoryMutation.isPending;
   const isDeleting = removeItemMutation.isPending;
@@ -561,6 +734,9 @@ export default function ItemsCatalog({
     deleteCategoryMutation.isPending ||
     isDeleting ||
     isUploadingImage ||
+    isCreateAdditionalBusy ||
+    isEditAdditionalBusy ||
+    isDeleteAdditionalBusy ||
     Boolean(renamingCategory);
   const canManageItems = userRole === "DONO" || userRole === "ATENDENTE";
   const canReorderCategories = canManageItems && activeCategoryFilter === "ALL";
@@ -898,6 +1074,7 @@ export default function ItemsCatalog({
       category: defaultCategory,
       name: "",
       description: "",
+      pricingType: "UNIDADE",
       servesPeople: "1",
       priceMasked: DEFAULT_PRICE_MASK,
       promotionalPriceMasked: "",
@@ -919,6 +1096,7 @@ export default function ItemsCatalog({
       category: targetCategory,
       name: "",
       description: "",
+      pricingType: "UNIDADE",
       servesPeople: "1",
       priceMasked: DEFAULT_PRICE_MASK,
       promotionalPriceMasked: "",
@@ -1107,6 +1285,7 @@ export default function ItemsCatalog({
       category: item.category,
       name: item.name,
       description: item.description ?? "",
+      pricingType: item.pricing_type,
       servesPeople: String(item.serves_people),
       priceMasked: numberToMaskedPrice(item.price),
       promotionalPriceMasked:
@@ -1162,6 +1341,7 @@ export default function ItemsCatalog({
         description: formData.description.trim() || undefined,
         price,
         promotionalPrice,
+        pricingType: formData.pricingType,
         servesPeople,
         imagePath,
       });
@@ -1201,6 +1381,7 @@ export default function ItemsCatalog({
       normalizedName !== editingItem.name.trim() ||
       normalizedCategory !== editingItem.category.trim() ||
       normalizedDescription !== originalDescription ||
+      formData.pricingType !== editingItem.pricing_type ||
       normalizedPriceInCents !== originalPriceInCents ||
       normalizedPromotionalPriceInCents !== originalPromotionalPriceInCents ||
       normalizedServesPeople !== editingItem.serves_people ||
@@ -1250,6 +1431,7 @@ export default function ItemsCatalog({
           name,
           category,
           description: formData.description.trim() || null,
+          pricingType: formData.pricingType,
           price,
           promotionalPrice,
           servesPeople,
@@ -1694,6 +1876,144 @@ export default function ItemsCatalog({
     );
   })();
 
+  const handleCreateAdditional = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+
+    const menuItemId = additionalForm.menuItemId.trim();
+    const title = additionalForm.title.trim();
+    const description = additionalForm.description.trim();
+    const price = Number(additionalForm.price);
+
+    if (!menuItemId) {
+      toast.error("Selecione um item para o adicional.");
+      return;
+    }
+
+    if (title.length < 2) {
+      toast.error("Informe um título válido para o adicional.");
+      return;
+    }
+
+    if (Number.isNaN(price) || price <= 0) {
+      toast.error("Informe um valor válido para o adicional.");
+      return;
+    }
+
+    try {
+      await createAdditionalMutation.mutateAsync({
+        menuItemId,
+        title,
+        description: description || undefined,
+        price,
+      });
+    } catch {
+      return;
+    }
+  };
+
+  const handleStartEditAdditional = (additional: MenuAdditional) => {
+    if (!canManageItems || isAnyBusy) {
+      return;
+    }
+
+    setEditingAdditionalId(additional.id);
+    setAdditionalEditForm({
+      menuItemId: additional.menu_item_id,
+      title: additional.title,
+      description: additional.description ?? "",
+      price: String(additional.price),
+    });
+  };
+
+  const handleSaveAdditionalEdit = async (
+    event: React.FormEvent<HTMLFormElement>,
+    currentAdditional: MenuAdditional,
+  ) => {
+    event.preventDefault();
+
+    const menuItemId = additionalEditForm.menuItemId.trim();
+    const title = additionalEditForm.title.trim();
+    const description = additionalEditForm.description.trim();
+    const price = Number(additionalEditForm.price);
+
+    if (!menuItemId) {
+      toast.error("Selecione um item para o adicional.");
+      return;
+    }
+
+    if (title.length < 2) {
+      toast.error("Informe um título válido para o adicional.");
+      return;
+    }
+
+    if (Number.isNaN(price) || price <= 0) {
+      toast.error("Informe um valor válido para o adicional.");
+      return;
+    }
+
+    const payload: {
+      menuItemId?: string;
+      title?: string;
+      description?: string | null;
+      price?: number;
+    } = {};
+
+    if (menuItemId !== currentAdditional.menu_item_id) {
+      payload.menuItemId = menuItemId;
+    }
+
+    if (title !== currentAdditional.title) {
+      payload.title = title;
+    }
+
+    if ((description || null) !== (currentAdditional.description || null)) {
+      payload.description = description || null;
+    }
+
+    if (Math.round(price * 100) !== Math.round(currentAdditional.price * 100)) {
+      payload.price = price;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      setEditingAdditionalId(null);
+      return;
+    }
+
+    try {
+      await updateAdditionalMutation.mutateAsync({
+        additionalId: currentAdditional.id,
+        payload,
+      });
+    } catch {
+      return;
+    }
+  };
+
+  const handleConfirmDeleteAdditional = async () => {
+    if (!additionalPendingDelete) {
+      return;
+    }
+
+    const deletingAdditionalId = additionalPendingDelete.id;
+    setAdditionalPendingDelete(null);
+
+    try {
+      await removeAdditionalMutation.mutateAsync(deletingAdditionalId);
+    } catch {
+      return;
+    }
+  };
+
+  const orderedAdditionals = [...additionals].sort((a, b) => {
+    if (a.sort_order !== b.sort_order) {
+      return a.sort_order - b.sort_order;
+    }
+
+    return a.title.localeCompare(b.title);
+  });
+
   return (
     <section className="w-full px-4 pb-28 pt-4 sm:px-6">
       <div className="mb-4 space-y-3">
@@ -1741,8 +2061,14 @@ export default function ItemsCatalog({
         </div>
       </div>
 
-      <div className="mb-4 flex items-center justify-between">
-        <div />
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setOpenAdditionalsModal(true)}
+          className="inline-flex items-center gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--app-text)]"
+        >
+          Ver adicionais
+        </button>
         {canManageItems ? (
           <div className="flex items-center gap-2">
             <button
@@ -2324,6 +2650,23 @@ export default function ItemsCatalog({
               </FormLabel>
 
               <FormLabel>
+                <span>Tipo de cobrança</span>
+                <FormSelect
+                  value={formData.pricingType}
+                  disabled={isCreateBusy}
+                  onChange={(event) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      pricingType: event.target.value as "UNIDADE" | "PESO",
+                    }))
+                  }
+                >
+                  <option value="UNIDADE">Unidade</option>
+                  <option value="PESO">Peso (kg)</option>
+                </FormSelect>
+              </FormLabel>
+
+              <FormLabel>
                 <span>Preço</span>
                 <FormInput
                   value={formData.priceMasked}
@@ -2502,6 +2845,23 @@ export default function ItemsCatalog({
               </FormLabel>
 
               <FormLabel>
+                <span>Tipo de cobrança</span>
+                <FormSelect
+                  value={formData.pricingType}
+                  disabled={isEditBusy}
+                  onChange={(event) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      pricingType: event.target.value as "UNIDADE" | "PESO",
+                    }))
+                  }
+                >
+                  <option value="UNIDADE">Unidade</option>
+                  <option value="PESO">Peso (kg)</option>
+                </FormSelect>
+              </FormLabel>
+
+              <FormLabel>
                 <span>Preço</span>
                 <FormInput
                   value={formData.priceMasked}
@@ -2626,6 +2986,316 @@ export default function ItemsCatalog({
         </div>
       ) : null}
 
+      {openAdditionalsModal ? (
+        <div className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
+          <div className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-xl sm:p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <Title as="h2" size="modal">
+                Adicionais
+              </Title>
+              <button
+                type="button"
+                onClick={() => setOpenAdditionalsModal(false)}
+                className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80"
+                aria-label="Fechar modal de adicionais"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {canManageItems ? (
+              <div className="mb-4">
+                <button
+                  type="button"
+                  disabled={isAnyBusy}
+                  onClick={() => {
+                    setOpenCreateAdditional((prev) => !prev);
+                    setAdditionalForm((prev) => ({
+                      ...prev,
+                      menuItemId: prev.menuItemId || items[0]?.id || "",
+                    }));
+                  }}
+                  className="inline-flex items-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {openCreateAdditional
+                    ? "Fechar novo adicional"
+                    : "Criar adicional"}
+                </button>
+
+                {openCreateAdditional ? (
+                  <div className="mt-3 space-y-3 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3">
+                    <Text className="font-semibold text-[var(--app-text)]">
+                      Novo adicional
+                    </Text>
+
+                    <form
+                      className="grid grid-cols-1 gap-2"
+                      onSubmit={handleCreateAdditional}
+                    >
+                      <FormLabel>
+                        <span>Item</span>
+                        <FormSelect
+                          value={additionalForm.menuItemId}
+                          disabled={isCreateAdditionalBusy}
+                          onChange={(event) =>
+                            setAdditionalForm((prev) => ({
+                              ...prev,
+                              menuItemId: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="" disabled>
+                            Selecione o item
+                          </option>
+                          {items
+                            .slice()
+                            .sort((a, b) => a.name.localeCompare(b.name))
+                            .map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {`${item.code} - ${item.name}`}
+                              </option>
+                            ))}
+                        </FormSelect>
+                      </FormLabel>
+
+                      <FormLabel>
+                        <span>Título</span>
+                        <FormInput
+                          value={additionalForm.title}
+                          disabled={isCreateAdditionalBusy}
+                          onChange={(event) =>
+                            setAdditionalForm((prev) => ({
+                              ...prev,
+                              title: event.target.value,
+                            }))
+                          }
+                          placeholder="Ex: Queijo extra"
+                        />
+                      </FormLabel>
+
+                      <FormLabel>
+                        <span>Descrição</span>
+                        <FormTextarea
+                          value={additionalForm.description}
+                          disabled={isCreateAdditionalBusy}
+                          onChange={(event) =>
+                            setAdditionalForm((prev) => ({
+                              ...prev,
+                              description: event.target.value,
+                            }))
+                          }
+                          rows={2}
+                          placeholder="Opcional"
+                        />
+                      </FormLabel>
+
+                      <FormLabel>
+                        <span>Valor</span>
+                        <FormInput
+                          value={additionalForm.price}
+                          disabled={isCreateAdditionalBusy}
+                          onChange={(event) =>
+                            setAdditionalForm((prev) => ({
+                              ...prev,
+                              price: event.target.value,
+                            }))
+                          }
+                          inputMode="decimal"
+                          placeholder="0.00"
+                        />
+                      </FormLabel>
+
+                      <button
+                        type="submit"
+                        disabled={isCreateAdditionalBusy}
+                        className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-3 py-2 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {isCreateAdditionalBusy ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : null}
+                        {isCreateAdditionalBusy
+                          ? "Salvando..."
+                          : "Salvar adicional"}
+                      </button>
+                    </form>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {orderedAdditionals.length === 0 ? (
+              <Text tone="muted">Nenhum adicional cadastrado.</Text>
+            ) : (
+              <div className="space-y-2">
+                {orderedAdditionals.map((additional) => (
+                  <article
+                    key={additional.id}
+                    className="rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+                  >
+                    {editingAdditionalId === additional.id ? (
+                      <form
+                        className="grid grid-cols-1 gap-2"
+                        onSubmit={(event) =>
+                          void handleSaveAdditionalEdit(event, additional)
+                        }
+                      >
+                        <FormLabel>
+                          <span>Item</span>
+                          <FormSelect
+                            value={additionalEditForm.menuItemId}
+                            disabled={isEditAdditionalBusy}
+                            onChange={(event) =>
+                              setAdditionalEditForm((prev) => ({
+                                ...prev,
+                                menuItemId: event.target.value,
+                              }))
+                            }
+                          >
+                            <option value="" disabled>
+                              Selecione o item
+                            </option>
+                            {items
+                              .slice()
+                              .sort((a, b) => a.name.localeCompare(b.name))
+                              .map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {`${item.code} - ${item.name}`}
+                                </option>
+                              ))}
+                          </FormSelect>
+                        </FormLabel>
+
+                        <FormLabel>
+                          <span>Título</span>
+                          <FormInput
+                            value={additionalEditForm.title}
+                            disabled={isEditAdditionalBusy}
+                            onChange={(event) =>
+                              setAdditionalEditForm((prev) => ({
+                                ...prev,
+                                title: event.target.value,
+                              }))
+                            }
+                          />
+                        </FormLabel>
+
+                        <FormLabel>
+                          <span>Descrição</span>
+                          <FormTextarea
+                            value={additionalEditForm.description}
+                            disabled={isEditAdditionalBusy}
+                            onChange={(event) =>
+                              setAdditionalEditForm((prev) => ({
+                                ...prev,
+                                description: event.target.value,
+                              }))
+                            }
+                            rows={2}
+                          />
+                        </FormLabel>
+
+                        <FormLabel>
+                          <span>Valor</span>
+                          <FormInput
+                            value={additionalEditForm.price}
+                            disabled={isEditAdditionalBusy}
+                            onChange={(event) =>
+                              setAdditionalEditForm((prev) => ({
+                                ...prev,
+                                price: event.target.value,
+                              }))
+                            }
+                            inputMode="decimal"
+                          />
+                        </FormLabel>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="submit"
+                            disabled={isEditAdditionalBusy}
+                            className="inline-flex items-center justify-center gap-1 rounded-md bg-[var(--app-primary)] px-2 py-2 text-xs font-semibold text-[var(--app-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {isEditAdditionalBusy ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : null}
+                            Salvar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isEditAdditionalBusy}
+                            onClick={() => setEditingAdditionalId(null)}
+                            className="inline-flex items-center justify-center gap-1 rounded-md border border-[var(--app-border)] px-2 py-2 text-xs font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <Title as="h3" size="card" className="line-clamp-1">
+                              {additional.title}
+                            </Title>
+                            <Text
+                              tone="muted"
+                              size="sm"
+                              className="mt-1 line-clamp-2"
+                            >
+                              {additional.description?.trim() ||
+                                "Sem descrição."}
+                            </Text>
+                            {additional.item_name ? (
+                              <Text tone="muted" size="sm" className="mt-1">
+                                Item: {additional.item_name}
+                              </Text>
+                            ) : null}
+                          </div>
+
+                          <Text
+                            size="lg"
+                            className="whitespace-nowrap font-semibold"
+                          >
+                            {formatPriceLabel(additional.price)}
+                          </Text>
+                        </div>
+
+                        {canManageItems ? (
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              disabled={isAnyBusy}
+                              onClick={() =>
+                                handleStartEditAdditional(additional)
+                              }
+                              className="inline-flex items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Pencil className="h-3.5 w-3.5" /> Editar
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isAnyBusy}
+                              onClick={() =>
+                                setAdditionalPendingDelete(additional)
+                              }
+                              className="inline-flex items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" /> Remover
+                            </button>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       <ConfirmationModal
         isOpen={Boolean(itemPendingDelete)}
         title="Confirmar exclusão"
@@ -2648,6 +3318,18 @@ export default function ItemsCatalog({
         onClose={() => setCategoryPendingDelete(null)}
         onConfirm={() => {
           void handleConfirmDeleteCategory();
+        }}
+      />
+
+      <ConfirmationModal
+        isOpen={Boolean(additionalPendingDelete)}
+        title="Confirmar exclusão"
+        description={`Deseja remover o adicional ${additionalPendingDelete?.title ?? ""}?`}
+        confirmLabel="Remover"
+        isConfirming={removeAdditionalMutation.isPending}
+        onClose={() => setAdditionalPendingDelete(null)}
+        onConfirm={() => {
+          void handleConfirmDeleteAdditional();
         }}
       />
 

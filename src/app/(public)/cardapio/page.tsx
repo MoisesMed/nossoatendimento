@@ -10,10 +10,22 @@ type MenuItem = {
   description: string | null;
   price: number;
   promotional_price: number | null;
+  pricing_type: "UNIDADE" | "PESO";
   serves_people: number;
   active: boolean;
   image_path: string | null;
   imageUrl: string | null;
+};
+
+type MenuAdditional = {
+  id: string;
+  menu_item_id: string;
+  item_name: string | null;
+  title: string;
+  description: string | null;
+  price: number;
+  sort_order: number;
+  active: boolean;
 };
 
 type CategoryImageData = {
@@ -48,6 +60,7 @@ export default async function CardapioPage() {
 
   let userRole: "DONO" | "ATENDENTE" | "USUARIO" = "USUARIO";
   let initialItems: MenuItem[] = [];
+  let initialAdditionals: MenuAdditional[] = [];
   let initialCategories: string[] = [];
   let initialCategoryImages: Record<string, CategoryImageData> = {};
 
@@ -60,7 +73,7 @@ export default async function CardapioPage() {
     const { data: itemsData } = await authSupabase
       .from("menu_items")
       .select(
-        "id, code, name, category, description, price, promotional_price, serves_people, active, image_path",
+        "id, code, name, category, description, price, promotional_price, pricing_type, serves_people, active, image_path",
       )
       .eq("tenant_id", tenant.id)
       .eq("active", true)
@@ -91,6 +104,24 @@ export default async function CardapioPage() {
     initialItems = typedItems.map((item) => ({
       ...item,
       imageUrl: signedMap.get(item.id) ?? null,
+    }));
+
+    const { data: additionalsData } = await authSupabase
+      .from("menu_item_additionals")
+      .select("id, menu_item_id, title, description, price, sort_order, active")
+      .eq("tenant_id", tenant.id)
+      .eq("active", true)
+      .order("sort_order", { ascending: true })
+      .order("title", { ascending: true });
+
+    const itemNameById = new Map(
+      initialItems.map((item) => [item.id, item.name]),
+    );
+    initialAdditionals = (
+      (additionalsData ?? []) as Array<Omit<MenuAdditional, "item_name">>
+    ).map((additional) => ({
+      ...additional,
+      item_name: itemNameById.get(additional.menu_item_id) ?? null,
     }));
 
     const typedCategories = (categoriesData ?? []) as Array<{
@@ -157,12 +188,24 @@ export default async function CardapioPage() {
       description: string | null;
       price: number;
       promotional_price: number | null;
+      pricing_type?: "UNIDADE" | "PESO";
       serves_people: number;
       active: boolean;
       image_path: string | null;
       image_url: string | null;
       category_sort_order: number;
       category_image_path?: string | null;
+    };
+
+    type PublicAdditionalRow = {
+      id: string;
+      menu_item_id: string;
+      item_name: string | null;
+      title: string;
+      description: string | null;
+      price: number;
+      sort_order: number;
+      active: boolean;
     };
 
     const typedRows = ((menuRows ?? []) as PublicMenuRow[]).sort((a, b) => {
@@ -202,11 +245,26 @@ export default async function CardapioPage() {
       description: row.description,
       price: Number(row.price),
       promotional_price: row.promotional_price,
+      pricing_type: row.pricing_type ?? "UNIDADE",
       serves_people: row.serves_people,
       active: row.active,
       image_path: row.image_path,
       imageUrl: itemImageMap.get(row.id) ?? null,
     }));
+
+    const { data: additionalRows } = await supabase.rpc(
+      "get_public_menu_additionals",
+      {
+        p_tenant_slug: PUBLIC_TENANT_SLUG,
+      },
+    );
+
+    initialAdditionals = ((additionalRows ?? []) as PublicAdditionalRow[]).map(
+      (row) => ({
+        ...row,
+        price: Number(row.price),
+      }),
+    );
 
     const orderedCategoryNames = Array.from(
       new Set(
@@ -258,6 +316,7 @@ export default async function CardapioPage() {
   return (
     <ItemsCatalog
       initialItems={initialItems}
+      initialAdditionals={initialAdditionals}
       initialCategories={initialCategories}
       initialCategoryImages={initialCategoryImages}
       userRole={userRole}

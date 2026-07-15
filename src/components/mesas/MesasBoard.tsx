@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import Select, {
+  components,
+  type DropdownIndicatorProps,
+  type GroupBase,
+  type SingleValue,
+  type StylesConfig,
+} from "react-select";
 import {
+  ChevronDown,
   CheckCircle2,
   Clock3,
   Info,
@@ -45,6 +53,10 @@ type MesaItem = {
   price: number;
   originalPrice: number | null;
   delivered: boolean;
+  pricingType?: "UNIDADE" | "PESO";
+  weightKg?: number;
+  additionalTitles?: string[];
+  additionalTotal?: number;
 };
 
 type PaymentMethod = "CREDITO" | "DEBITO" | "PIX" | "DINHEIRO";
@@ -75,6 +87,7 @@ type ClosedComanda = {
 type MesaItemDraft = {
   catalogItemId: string;
   quantity: string;
+  weightKg: string;
 };
 
 type CatalogItem = {
@@ -84,7 +97,24 @@ type CatalogItem = {
   category: string;
   price: number;
   promotional_price: number | null;
+  pricing_type: "UNIDADE" | "PESO";
   active: boolean;
+};
+
+type CatalogItemAdditional = {
+  id: string;
+  menu_item_id: string;
+  item_name?: string | null;
+  title: string;
+  description: string | null;
+  price: number;
+  sort_order: number;
+  active: boolean;
+};
+
+type CatalogItemSelectOption = {
+  value: string;
+  label: string;
 };
 
 type QuickCatalogItemForm = {
@@ -92,6 +122,7 @@ type QuickCatalogItemForm = {
   category: string;
   price: string;
   promotionalPrice: string;
+  pricingType: "UNIDADE" | "PESO";
 };
 
 const CREATE_NEW_CATALOG_ITEM_VALUE = "__CREATE_NEW_CATALOG_ITEM__";
@@ -115,6 +146,105 @@ function formatCurrency(value: number) {
     currency: "BRL",
   });
 }
+
+function formatMesaItemName(item: MesaItem) {
+  if (item.pricingType === "PESO" && item.weightKg && item.weightKg > 0) {
+    return `${item.name} (${item.weightKg.toLocaleString("pt-BR", {
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3,
+    })} kg)`;
+  }
+
+  return item.name;
+}
+
+function ItemDropdownIndicator(
+  props: DropdownIndicatorProps<
+    CatalogItemSelectOption,
+    false,
+    GroupBase<CatalogItemSelectOption>
+  >,
+) {
+  return (
+    <components.DropdownIndicator {...props}>
+      <ChevronDown className="h-3.5 w-3.5" />
+    </components.DropdownIndicator>
+  );
+}
+
+const itemSelectStyles: StylesConfig<
+  CatalogItemSelectOption,
+  false,
+  GroupBase<CatalogItemSelectOption>
+> = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: 40,
+    borderRadius: 8,
+    borderColor: "var(--app-border)",
+    boxShadow: state.isFocused
+      ? "0 0 0 2px color-mix(in oklab, var(--app-primary) 20%, transparent)"
+      : "none",
+    backgroundColor: "var(--app-surface)",
+    ":hover": {
+      borderColor: "var(--app-border)",
+    },
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: "var(--app-text)",
+    fontSize: 14,
+  }),
+  input: (base) => ({
+    ...base,
+    color: "var(--app-text)",
+    fontSize: 14,
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: "var(--app-muted)",
+    fontSize: 14,
+  }),
+  indicatorSeparator: () => ({
+    display: "none",
+  }),
+  dropdownIndicator: (base, state) => ({
+    ...base,
+    color: "var(--app-muted)",
+    transform: state.selectProps.menuIsOpen ? "rotate(180deg)" : "none",
+    transition: "transform .15s ease",
+  }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 8,
+    border: "1px solid var(--app-border)",
+    overflow: "hidden",
+    boxShadow: "0 10px 26px rgba(15, 23, 42, 0.12)",
+    zIndex: 90,
+  }),
+  menuPortal: (base) => ({
+    ...base,
+    zIndex: 9999,
+  }),
+  menuList: (base) => ({
+    ...base,
+    padding: 4,
+    backgroundColor: "#ffffff",
+  }),
+  option: (base, state) => ({
+    ...base,
+    borderRadius: 6,
+    fontSize: 14,
+    padding: "8px 10px",
+    cursor: "pointer",
+    backgroundColor: state.isSelected
+      ? "var(--app-primary)"
+      : state.isFocused
+        ? "var(--app-surface-muted)"
+        : "#ffffff",
+    color: state.isSelected ? "var(--app-primary-contrast)" : "var(--app-text)",
+  }),
+};
 
 const statusStyles: Record<
   MesaStatus,
@@ -364,6 +494,9 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isQuickCreateItemModalOpen, setIsQuickCreateItemModalOpen] =
     useState(false);
+  const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
+  const [isPagamentoMenuOpen, setIsPagamentoMenuOpen] = useState(false);
+  const pagamentoMenuRef = useRef<HTMLDivElement | null>(null);
   const [openCloseComandaConfirm, setOpenCloseComandaConfirm] = useState(false);
   const [closeComandaObservation, setCloseComandaObservation] = useState("");
   const [isClosingComanda, setIsClosingComanda] = useState(false);
@@ -382,7 +515,12 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   >({});
   const [closedComandas, setClosedComandas] = useState<ClosedComanda[]>([]);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [catalogItemAdditionals, setCatalogItemAdditionals] = useState<
+    CatalogItemAdditional[]
+  >([]);
   const [isLoadingCatalogItems, setIsLoadingCatalogItems] = useState(false);
+  const [isLoadingCatalogItemAdditionals, setIsLoadingCatalogItemAdditionals] =
+    useState(false);
   const [paymentDraft, setPaymentDraft] = useState<{
     method: PaymentMethod;
     amount: string;
@@ -393,13 +531,18 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   const [itemDraft, setItemDraft] = useState<MesaItemDraft>({
     catalogItemId: "",
     quantity: "1",
+    weightKg: "",
   });
+  const [selectedAdditionalIds, setSelectedAdditionalIds] = useState<string[]>(
+    [],
+  );
   const [quickCatalogItemForm, setQuickCatalogItemForm] =
     useState<QuickCatalogItemForm>({
       name: "",
       category: "Sem Categoria",
       price: "",
       promotionalPrice: "",
+      pricingType: "UNIDADE",
     });
   const [formData, setFormData] = useState<CreateMesaInput>({
     code: "",
@@ -407,6 +550,23 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     seats: "4",
     notes: "",
   });
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!pagamentoMenuRef.current) {
+        return;
+      }
+
+      if (!pagamentoMenuRef.current.contains(event.target as Node)) {
+        setIsPagamentoMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   const statusLegend = useMemo(
     () => [
@@ -488,6 +648,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
         category: input.category.trim(),
         price,
         promotionalPrice,
+        pricingType: input.pricingType,
         servesPeople: 1,
       };
 
@@ -638,6 +799,8 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       string,
       {
         name: string;
+        additionalTitles: string[];
+        additionalTotal: number;
         quantity: number;
         unitPrice: number;
         originalUnitPrice: number | null;
@@ -647,13 +810,19 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     >();
 
     currentMesaItems.forEach((item) => {
-      const key = `${item.name}::${item.price}::${item.originalPrice ?? "no-original"}`;
+      const displayName = formatMesaItemName(item);
+      const additionalTitles = item.additionalTitles ?? [];
+      const additionalSignature = additionalTitles.join("||");
+      const key = `${displayName}::${additionalSignature}::${item.price}::${item.originalPrice ?? "no-original"}`;
       const previous = grouped.get(key);
 
       if (previous) {
         grouped.set(key, {
           ...previous,
           quantity: previous.quantity + item.quantity,
+          additionalTotal:
+            previous.additionalTotal +
+            item.quantity * Math.max(0, item.additionalTotal ?? 0),
           total: previous.total + item.quantity * item.price,
           originalTotal:
             previous.originalTotal !== null && item.originalPrice !== null
@@ -664,7 +833,9 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       }
 
       grouped.set(key, {
-        name: item.name,
+        name: displayName,
+        additionalTitles,
+        additionalTotal: item.quantity * Math.max(0, item.additionalTotal ?? 0),
         quantity: item.quantity,
         unitPrice: item.price,
         originalUnitPrice: item.originalPrice,
@@ -685,6 +856,85 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       ? (catalogItems.find((item) => item.id === itemDraft.catalogItemId) ??
         null)
       : null;
+  const catalogItemOptions = useMemo<CatalogItemSelectOption[]>(
+    () => [
+      ...catalogItems.map((item) => ({
+        value: item.id,
+        label: `${item.code} - ${item.name}`,
+      })),
+      {
+        value: CREATE_NEW_CATALOG_ITEM_VALUE,
+        label: "+ Criar novo item",
+      },
+    ],
+    [catalogItems],
+  );
+  const selectedCatalogItemOption =
+    itemDraft.catalogItemId.length > 0
+      ? (catalogItemOptions.find(
+          (option) => option.value === itemDraft.catalogItemId,
+        ) ?? null)
+      : null;
+  const selectedCatalogItemAdditionals = useMemo(() => {
+    if (!selectedCatalogItem) {
+      return [];
+    }
+
+    return catalogItemAdditionals
+      .filter(
+        (additional) =>
+          additional.active &&
+          additional.menu_item_id === selectedCatalogItem.id,
+      )
+      .sort((a, b) => {
+        if (a.sort_order === b.sort_order) {
+          return a.title.localeCompare(b.title);
+        }
+
+        return a.sort_order - b.sort_order;
+      });
+  }, [catalogItemAdditionals, selectedCatalogItem]);
+  const selectedAdditionalItems = useMemo(
+    () =>
+      selectedCatalogItemAdditionals.filter((additional) =>
+        selectedAdditionalIds.includes(additional.id),
+      ),
+    [selectedCatalogItemAdditionals, selectedAdditionalIds],
+  );
+  const selectedCatalogItemUnitPrice = useMemo(() => {
+    if (!selectedCatalogItem) {
+      return 0;
+    }
+
+    const hasPromotionalPrice =
+      selectedCatalogItem.promotional_price !== null &&
+      selectedCatalogItem.promotional_price > 0 &&
+      selectedCatalogItem.promotional_price < selectedCatalogItem.price;
+
+    return hasPromotionalPrice
+      ? Number(selectedCatalogItem.promotional_price)
+      : selectedCatalogItem.price;
+  }, [selectedCatalogItem]);
+  const selectedAdditionalUnitTotal = useMemo(
+    () =>
+      selectedAdditionalItems.reduce(
+        (total, additional) => total + additional.price,
+        0,
+      ),
+    [selectedAdditionalItems],
+  );
+  const selectedItemUnitTotal =
+    selectedCatalogItemUnitPrice + selectedAdditionalUnitTotal;
+  const isSelectedCatalogItemByWeight = selectedCatalogItem?.pricing_type === "PESO";
+  const selectedItemQuantity = Math.max(1, Number(itemDraft.quantity) || 1);
+  const selectedItemWeightKg = Math.max(0, Number(itemDraft.weightKg) || 0);
+  const selectedBaseTotal = isSelectedCatalogItemByWeight
+    ? selectedCatalogItemUnitPrice * selectedItemWeightKg
+    : selectedCatalogItemUnitPrice * selectedItemQuantity;
+  const selectedAdditionalTotal = isSelectedCatalogItemByWeight
+    ? selectedAdditionalUnitTotal
+    : selectedAdditionalUnitTotal * selectedItemQuantity;
+  const selectedItemTotal = selectedBaseTotal + selectedAdditionalTotal;
 
   useEffect(() => {
     const storedMesaItems = window.localStorage.getItem(MESA_ITEMS_STORAGE_KEY);
@@ -836,6 +1086,56 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCatalogItemAdditionals = async () => {
+      setIsLoadingCatalogItemAdditionals(true);
+
+      try {
+        const response = await fetch("/api/items/additionals", {
+          method: "GET",
+        });
+        const result = (await response.json().catch(() => ({}))) as {
+          data?: CatalogItemAdditional[];
+          error?: string;
+        };
+
+        if (!response.ok || !result.data) {
+          throw new Error(result.error ?? "Falha ao carregar adicionais.");
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        setCatalogItemAdditionals(
+          result.data.filter((additional) => additional.active),
+        );
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        if (error instanceof Error) {
+          toast.error(error.message);
+        } else {
+          toast.error("Não foi possível carregar os adicionais.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingCatalogItemAdditionals(false);
+        }
+      }
+    };
+
+    void loadCatalogItemAdditionals();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleOpenMesaDetail = (mesa: Mesa) => {
     setMenuMesaId(null);
     setIsPaymentModalOpen(false);
@@ -933,15 +1233,30 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       return;
     }
 
-    const quantity = Number(itemDraft.quantity);
     const selectedItem = catalogItems.find(
       (item) => item.id === itemDraft.catalogItemId,
     );
+    const isByWeight = selectedItem?.pricing_type === "PESO";
+    const quantity = isByWeight ? 1 : Number(itemDraft.quantity);
+    const weightKg = isByWeight ? Number(itemDraft.weightKg) : null;
 
-    if (!selectedItem || quantity < 1 || Number.isNaN(quantity)) {
+    if (!selectedItem) {
       toast.error(
-        "Selecione um item valido e preencha a quantidade corretamente.",
+        "Selecione um item valido e preencha os campos corretamente.",
       );
+      return;
+    }
+
+    if (!isByWeight && (quantity < 1 || Number.isNaN(quantity))) {
+      toast.error("Informe uma quantidade válida.");
+      return;
+    }
+
+    if (
+      isByWeight &&
+      (weightKg === null || Number.isNaN(weightKg) || weightKg <= 0)
+    ) {
+      toast.error("Informe um peso válido em kg.");
       return;
     }
 
@@ -949,17 +1264,41 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       selectedItem.promotional_price !== null &&
       selectedItem.promotional_price > 0 &&
       selectedItem.promotional_price < selectedItem.price;
-    const appliedPrice = hasCatalogPromotionalPrice
+    const baseAppliedPrice = hasCatalogPromotionalPrice
       ? Number(selectedItem.promotional_price)
       : selectedItem.price;
+    const selectedAdditionals = catalogItemAdditionals.filter(
+      (additional) =>
+        additional.active &&
+        additional.menu_item_id === selectedItem.id &&
+        selectedAdditionalIds.includes(additional.id),
+    );
+    const additionalsUnitTotal = selectedAdditionals.reduce(
+      (total, additional) => total + additional.price,
+      0,
+    );
+    const lineAppliedPrice = isByWeight
+      ? baseAppliedPrice * Math.max(0, weightKg ?? 0) + additionalsUnitTotal
+      : baseAppliedPrice + additionalsUnitTotal;
+    const lineOriginalPrice = hasCatalogPromotionalPrice
+      ? isByWeight
+        ? selectedItem.price * Math.max(0, weightKg ?? 0) + additionalsUnitTotal
+        : selectedItem.price
+      : null;
 
     const nextItem: MesaItem = {
       id: crypto.randomUUID(),
       name: selectedItem.name,
       quantity,
-      price: appliedPrice,
-      originalPrice: hasCatalogPromotionalPrice ? selectedItem.price : null,
+      price: lineAppliedPrice,
+      originalPrice: lineOriginalPrice,
       delivered: false,
+      pricingType: selectedItem.pricing_type,
+      weightKg: isByWeight ? Math.max(0, weightKg ?? 0) : undefined,
+      additionalTitles: selectedAdditionals.map(
+        (additional) => additional.title,
+      ),
+      additionalTotal: additionalsUnitTotal,
     };
 
     setMesaItemsByMesaId((prev) => ({
@@ -969,7 +1308,19 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
 
     toast.success("Item adicionado em aguardando envio.");
 
-    setItemDraft({ catalogItemId: "", quantity: "1" });
+    setItemDraft({ catalogItemId: "", quantity: "1", weightKg: "" });
+    setSelectedAdditionalIds([]);
+    setIsAddItemModalOpen(false);
+  };
+
+  const handleOpenAddItemModal = () => {
+    if (!mesaForDetail) {
+      return;
+    }
+
+    setItemDraft({ catalogItemId: "", quantity: "1", weightKg: "" });
+    setSelectedAdditionalIds([]);
+    setIsAddItemModalOpen(true);
   };
 
   const handleOpenQuickCreateItemModal = () => {
@@ -978,6 +1329,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       category: "Sem Categoria",
       price: "",
       promotionalPrice: "",
+      pricingType: "UNIDADE",
     });
     setIsQuickCreateItemModalOpen(true);
   };
@@ -1545,6 +1897,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                       disabled={isDetailStatusBusy}
                       onClick={() => {
                         setIsPaymentModalOpen(false);
+                        setIsPagamentoMenuOpen(false);
                         setMesaForDetail(null);
                       }}
                       className="rounded-full p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1584,6 +1937,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                       </span>
                     ) : null}
                   </div>
+
                   {isAwaitingPaymentDetail ? (
                     <>
                       <div className="mb-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-3">
@@ -1599,20 +1953,31 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                           <ul className="mt-2 space-y-1.5">
                             {requestedItemsSummary.map((item) => (
                               <li
-                                key={`${item.name}-${item.unitPrice}-${item.originalUnitPrice ?? "no-original"}`}
-                                className="flex items-center justify-between gap-2 text-xs"
+                                key={`${item.name}-${item.additionalTitles.join("||")}-${item.unitPrice}-${item.originalUnitPrice ?? "no-original"}`}
+                                className="text-xs"
                               >
-                                <span className="text-[var(--app-text)]">
-                                  {item.quantity}x {item.name}
-                                </span>
-                                <span className="text-right font-semibold text-[var(--app-text)]">
-                                  {item.originalTotal !== null ? (
-                                    <span className="mr-1 text-[11px] font-normal line-through opacity-70">
-                                      {formatCurrency(item.originalTotal)}
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="text-[var(--app-text)]">
+                                    {item.quantity}x {item.name}
+                                  </span>
+                                  <span className="text-right font-semibold text-[var(--app-text)]">
+                                    {formatCurrency(item.total)}
+                                  </span>
+                                </div>
+                                {item.additionalTitles.length > 0 ||
+                                item.additionalTotal > 0 ? (
+                                  <div className="ml-4 mt-0.5 flex items-start justify-between gap-2">
+                                    <span className="text-[11px] text-[var(--app-muted)]">
+                                      +{" "}
+                                      {item.additionalTitles.length > 0
+                                        ? item.additionalTitles.join(", ")
+                                        : "Adicionais"}
                                     </span>
-                                  ) : null}
-                                  <span>{formatCurrency(item.total)}</span>
-                                </span>
+                                    <span className="text-[11px] font-medium text-[var(--app-muted)]">
+                                      {formatCurrency(item.additionalTotal)}
+                                    </span>
+                                  </div>
+                                ) : null}
                               </li>
                             ))}
                           </ul>
@@ -1683,35 +2048,59 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                     </>
                   ) : (
                     <>
-                      <MesaPrintActions
-                        mesaCode={mesaForDetail.code}
-                        mesaName={mesaForDetail.name}
-                        waitingItems={waitingItems}
-                        deliveredItems={deliveredItems}
-                        allItems={currentMesaItems}
-                        peopleCount={mesaForDetail.seats}
-                        couvertUnitValue={dailyCouvertAmount}
-                        isCouvertEnabled={isDailyCouvertEnabled}
-                        disabled={isDetailStatusBusy}
-                      />
-
                       <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <button
-                          type="button"
+                        <MesaPrintActions
+                          mesaCode={mesaForDetail.code}
+                          mesaName={mesaForDetail.name}
+                          waitingItems={waitingItems}
+                          deliveredItems={deliveredItems}
+                          allItems={currentMesaItems}
+                          peopleCount={mesaForDetail.seats}
+                          couvertUnitValue={dailyCouvertAmount}
+                          isCouvertEnabled={isDailyCouvertEnabled}
                           disabled={isDetailStatusBusy}
-                          onClick={handleOpenPartialPayment}
-                          className="inline-flex items-center justify-center rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Pagamento parcial
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isDetailStatusBusy}
-                          onClick={() => void handleCloseMesaForPayment()}
-                          className="inline-flex items-center justify-center rounded-lg bg-[var(--app-primary)] px-3 py-2 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Ir para pagamento
-                        </button>
+                        />
+
+                        <div ref={pagamentoMenuRef} className="relative">
+                          <button
+                            type="button"
+                            disabled={isDetailStatusBusy}
+                            onClick={() =>
+                              setIsPagamentoMenuOpen((current) => !current)
+                            }
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            PAGAMENTO
+                            <ChevronDown className="h-4 w-4" />
+                          </button>
+
+                          {isPagamentoMenuOpen ? (
+                            <div className="absolute left-0 top-full z-30 mt-1 w-full min-w-[220px] rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-lg">
+                              <button
+                                type="button"
+                                disabled={isDetailStatusBusy}
+                                onClick={() => {
+                                  setIsPagamentoMenuOpen(false);
+                                  handleOpenPartialPayment();
+                                }}
+                                className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Pagamento parcial
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isDetailStatusBusy}
+                                onClick={() => {
+                                  setIsPagamentoMenuOpen(false);
+                                  void handleCloseMesaForPayment();
+                                }}
+                                className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Ir para pagamento
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
 
                       <section className="mb-3 rounded-lg border border-[var(--app-border)]">
@@ -1744,7 +2133,18 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                                       )
                                     }
                                   />
-                                  {item.quantity}x {item.name}
+                                  <span>
+                                    <span className="block">
+                                      {item.quantity}x{" "}
+                                      {formatMesaItemName(item)}
+                                    </span>
+                                    {item.additionalTitles &&
+                                    item.additionalTitles.length > 0 ? (
+                                      <span className="ml-4 block text-xs text-[var(--app-muted)]">
+                                        + {item.additionalTitles.join(", ")}
+                                      </span>
+                                    ) : null}
+                                  </span>
                                 </span>
                                 <span className="text-right text-[var(--app-muted)]">
                                   {item.originalPrice !== null ? (
@@ -1794,7 +2194,18 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                                       )
                                     }
                                   />
-                                  {item.quantity}x {item.name}
+                                  <span>
+                                    <span className="block">
+                                      {item.quantity}x{" "}
+                                      {formatMesaItemName(item)}
+                                    </span>
+                                    {item.additionalTitles &&
+                                    item.additionalTitles.length > 0 ? (
+                                      <span className="ml-4 block text-xs text-[var(--app-muted)]">
+                                        + {item.additionalTitles.join(", ")}
+                                      </span>
+                                    ) : null}
+                                  </span>
                                 </span>
                                 <span className="text-right text-[var(--app-muted)]">
                                   {item.originalPrice !== null ? (
@@ -1814,129 +2225,16 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                         </div>
                       </section>
 
-                      <form
-                        onSubmit={handleAddItem}
-                        className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2"
-                      >
-                        <label className="block min-w-0 space-y-1 sm:col-span-2">
-                          <span className="block truncate whitespace-nowrap text-[12px] font-medium text-[var(--app-muted)]">
-                            Item do catalogo
-                          </span>
-                          <select
-                            value={itemDraft.catalogItemId}
-                            disabled={
-                              isDetailStatusBusy || isLoadingCatalogItems
-                            }
-                            onChange={(event) =>
-                              setItemDraft((prev) => {
-                                const selectedValue = event.target.value;
-
-                                if (
-                                  selectedValue ===
-                                  CREATE_NEW_CATALOG_ITEM_VALUE
-                                ) {
-                                  handleOpenQuickCreateItemModal();
-                                  return {
-                                    ...prev,
-                                    catalogItemId: "",
-                                  };
-                                }
-
-                                const selectedCatalogItem = catalogItems.find(
-                                  (item) => item.id === selectedValue,
-                                );
-
-                                if (!selectedCatalogItem) {
-                                  return {
-                                    ...prev,
-                                    catalogItemId: selectedValue,
-                                  };
-                                }
-
-                                return {
-                                  ...prev,
-                                  catalogItemId: selectedCatalogItem.id,
-                                };
-                              })
-                            }
-                            className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-2 text-sm text-[var(--app-text)] outline-none"
-                          >
-                            <option value="" disabled>
-                              {isLoadingCatalogItems
-                                ? "Carregando itens..."
-                                : "Selecione o item"}
-                            </option>
-
-                            {catalogItems.map((item) => (
-                              <option key={item.id} value={item.id}>
-                                {`${item.code} - ${item.name}`}
-                              </option>
-                            ))}
-
-                            <option value={CREATE_NEW_CATALOG_ITEM_VALUE}>
-                              + Criar novo item
-                            </option>
-                          </select>
-                        </label>
-
-                        <label className="block min-w-0 space-y-1 sm:col-span-1">
-                          <span className="block truncate whitespace-nowrap text-[12px] font-medium text-[var(--app-muted)]">
-                            Quantidade
-                          </span>
-                          <input
-                            value={itemDraft.quantity}
-                            disabled={
-                              isDetailStatusBusy || !itemDraft.catalogItemId
-                            }
-                            onChange={(event) =>
-                              setItemDraft((prev) => ({
-                                ...prev,
-                                quantity: event.target.value,
-                              }))
-                            }
-                            type="number"
-                            min={1}
-                            placeholder="Qtd"
-                            className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-2 text-sm text-[var(--app-text)] outline-none"
-                          />
-                        </label>
-
-                        <label className="block min-w-0 space-y-1 sm:col-span-1">
-                          <span className="block truncate whitespace-nowrap text-[12px] font-medium text-[var(--app-muted)]">
-                            Preço aplicado
-                          </span>
-                          <input
-                            value={
-                              selectedCatalogItem
-                                ? (selectedCatalogItem.promotional_price !==
-                                    null &&
-                                  selectedCatalogItem.promotional_price > 0 &&
-                                  selectedCatalogItem.promotional_price <
-                                    selectedCatalogItem.price
-                                    ? selectedCatalogItem.promotional_price
-                                    : selectedCatalogItem.price
-                                  ).toLocaleString("pt-BR", {
-                                    style: "currency",
-                                    currency: "BRL",
-                                  })
-                                : ""
-                            }
-                            disabled
-                            placeholder="Preço do catálogo"
-                            className="w-full min-w-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-2 text-sm text-[var(--app-text)] outline-none"
-                          />
-                        </label>
-
+                      <div className="mb-3">
                         <button
-                          type="submit"
-                          disabled={
-                            isDetailStatusBusy || !itemDraft.catalogItemId
-                          }
-                          className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] sm:col-span-2"
+                          type="button"
+                          onClick={handleOpenAddItemModal}
+                          disabled={isDetailStatusBusy}
+                          className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          + Add Itens
+                          ADICIONAR ITEM
                         </button>
-                      </form>
+                      </div>
 
                       <div className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2">
                         <div className="flex items-center justify-between gap-2 text-sm text-[var(--app-text)]">
@@ -2024,20 +2322,31 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                 <ul className="mt-2 space-y-1.5">
                   {requestedItemsSummary.map((item) => (
                     <li
-                      key={`${item.name}-${item.unitPrice}-${item.originalUnitPrice ?? "no-original"}`}
-                      className="flex items-center justify-between gap-2 text-xs"
+                      key={`${item.name}-${item.additionalTitles.join("||")}-${item.unitPrice}-${item.originalUnitPrice ?? "no-original"}`}
+                      className="text-xs"
                     >
-                      <span className="text-[var(--app-text)]">
-                        {item.quantity}x {item.name}
-                      </span>
-                      <span className="text-right font-semibold text-[var(--app-text)]">
-                        {item.originalTotal !== null ? (
-                          <span className="mr-1 text-[11px] font-normal line-through opacity-70">
-                            {formatCurrency(item.originalTotal)}
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-[var(--app-text)]">
+                          {item.quantity}x {item.name}
+                        </span>
+                        <span className="text-right font-semibold text-[var(--app-text)]">
+                          {formatCurrency(item.total)}
+                        </span>
+                      </div>
+                      {item.additionalTitles.length > 0 ||
+                      item.additionalTotal > 0 ? (
+                        <div className="ml-4 mt-0.5 flex items-start justify-between gap-2">
+                          <span className="text-[11px] text-[var(--app-muted)]">
+                            +{" "}
+                            {item.additionalTitles.length > 0
+                              ? item.additionalTitles.join(", ")
+                              : "Adicionais"}
                           </span>
-                        ) : null}
-                        <span>{formatCurrency(item.total)}</span>
-                      </span>
+                          <span className="text-[11px] font-medium text-[var(--app-muted)]">
+                            {formatCurrency(item.additionalTotal)}
+                          </span>
+                        </div>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -2208,6 +2517,251 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
         </div>
       ) : null}
 
+      {isAddItemModalOpen && mesaForDetail ? (
+        <div className="fixed inset-0 z-50 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
+          <div className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-lg sm:p-5">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[12px] font-medium text-[var(--app-muted)]">
+                  Mesa {mesaForDetail.code}
+                </p>
+                <h2 className="text-xl font-semibold leading-tight text-[var(--app-text)]">
+                  Adicionar item
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAddItemModalOpen(false)}
+                className="rounded-full p-1 text-[var(--app-muted)] hover:opacity-80"
+                aria-label="Fechar modal de adicionar item"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddItem} className="space-y-3">
+              <label className="block min-w-0 space-y-1">
+                <span className="block truncate whitespace-nowrap text-[12px] font-medium text-[var(--app-muted)]">
+                  Item do catalogo
+                </span>
+                <Select<CatalogItemSelectOption, false>
+                  options={catalogItemOptions}
+                  value={selectedCatalogItemOption}
+                  isDisabled={isDetailStatusBusy || isLoadingCatalogItems}
+                  isLoading={isLoadingCatalogItems}
+                  isSearchable
+                  menuPosition="fixed"
+                  menuPortalTarget={
+                    typeof document !== "undefined" ? document.body : null
+                  }
+                  placeholder={
+                    isLoadingCatalogItems
+                      ? "Carregando itens..."
+                      : "Selecione ou pesquise o item"
+                  }
+                  noOptionsMessage={() => "Nenhum item encontrado"}
+                  components={{
+                    DropdownIndicator: ItemDropdownIndicator,
+                    IndicatorSeparator: () => null,
+                  }}
+                  styles={itemSelectStyles}
+                  onChange={(nextOption) => {
+                    const selectedOption =
+                      nextOption as SingleValue<CatalogItemSelectOption>;
+
+                    setSelectedAdditionalIds([]);
+
+                    if (!selectedOption) {
+                      setItemDraft((prev) => ({
+                        ...prev,
+                        catalogItemId: "",
+                        quantity: "1",
+                        weightKg: "",
+                      }));
+                      return;
+                    }
+
+                    if (
+                      selectedOption.value === CREATE_NEW_CATALOG_ITEM_VALUE
+                    ) {
+                      setItemDraft((prev) => ({
+                        ...prev,
+                        catalogItemId: "",
+                        quantity: "1",
+                        weightKg: "",
+                      }));
+                      handleOpenQuickCreateItemModal();
+                      return;
+                    }
+
+                    setItemDraft((prev) => ({
+                      ...prev,
+                      catalogItemId: selectedOption.value,
+                      quantity: "1",
+                      weightKg: "",
+                    }));
+                  }}
+                />
+              </label>
+
+              {itemDraft.catalogItemId ? (
+                <>
+                  {isSelectedCatalogItemByWeight ? (
+                    <label className="block min-w-0 space-y-1">
+                      <span className="block truncate whitespace-nowrap text-[12px] font-medium text-[var(--app-muted)]">
+                        Peso (kg)
+                      </span>
+                      <input
+                        value={itemDraft.weightKg}
+                        disabled={isDetailStatusBusy}
+                        onChange={(event) =>
+                          setItemDraft((prev) => ({
+                            ...prev,
+                            weightKg: event.target.value,
+                          }))
+                        }
+                        type="number"
+                        min={0.001}
+                        step="0.001"
+                        placeholder="Ex: 0.750"
+                        className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-2 text-sm text-[var(--app-text)] outline-none"
+                      />
+                    </label>
+                  ) : (
+                    <label className="block min-w-0 space-y-1">
+                      <span className="block truncate whitespace-nowrap text-[12px] font-medium text-[var(--app-muted)]">
+                        Quantidade
+                      </span>
+                      <input
+                        value={itemDraft.quantity}
+                        disabled={isDetailStatusBusy}
+                        onChange={(event) =>
+                          setItemDraft((prev) => ({
+                            ...prev,
+                            quantity: event.target.value,
+                          }))
+                        }
+                        type="number"
+                        min={1}
+                        placeholder="Qtd"
+                        className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-2 text-sm text-[var(--app-text)] outline-none"
+                      />
+                    </label>
+                  )}
+
+                  <section className="rounded-lg border border-[var(--app-border)] px-3 py-2">
+                    <p className="text-sm font-medium text-[var(--app-text)]">
+                      Adicionais disponíveis
+                    </p>
+
+                    {isLoadingCatalogItemAdditionals ? (
+                      <p className="mt-2 text-sm text-[var(--app-muted)]">
+                        Carregando adicionais...
+                      </p>
+                    ) : selectedCatalogItemAdditionals.length === 0 ? (
+                      <p className="mt-2 text-sm text-[var(--app-muted)]">
+                        Este item não possui adicionais.
+                      </p>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {selectedCatalogItemAdditionals.map((additional) => (
+                          <label
+                            key={additional.id}
+                            className="flex items-start justify-between gap-2 text-sm"
+                          >
+                            <span className="flex items-start gap-2 text-[var(--app-text)]">
+                              <input
+                                type="checkbox"
+                                checked={selectedAdditionalIds.includes(
+                                  additional.id,
+                                )}
+                                onChange={(event) => {
+                                  const checked = event.target.checked;
+
+                                  setSelectedAdditionalIds((prev) => {
+                                    if (checked) {
+                                      return [...prev, additional.id];
+                                    }
+
+                                    return prev.filter(
+                                      (id) => id !== additional.id,
+                                    );
+                                  });
+                                }}
+                              />
+                              <span>
+                                <span className="block font-medium leading-tight">
+                                  {additional.title}
+                                </span>
+                                {additional.description ? (
+                                  <span className="block text-xs text-[var(--app-muted)] leading-tight">
+                                    {additional.description}
+                                  </span>
+                                ) : null}
+                              </span>
+                            </span>
+                            <span className="text-[var(--app-muted)]">
+                              + {formatCurrency(additional.price)}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2">
+                    <div className="flex items-center justify-between gap-2 text-sm text-[var(--app-text)]">
+                      <span>
+                        {isSelectedCatalogItemByWeight
+                          ? "Preço base por kg"
+                          : "Preço base"}
+                      </span>
+                      <span>
+                        {formatCurrency(selectedCatalogItemUnitPrice)}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-2 text-sm text-[var(--app-text)]">
+                      <span>
+                        {isSelectedCatalogItemByWeight
+                          ? "Adicionais"
+                          : "Adicionais por unidade"}
+                      </span>
+                      <span>{formatCurrency(selectedAdditionalUnitTotal)}</span>
+                    </div>
+                    {!isSelectedCatalogItemByWeight ? (
+                      <div className="mt-1 flex items-center justify-between gap-2 text-sm text-[var(--app-text)]">
+                        <span>Valor por unidade</span>
+                        <span>{formatCurrency(selectedItemUnitTotal)}</span>
+                      </div>
+                    ) : null}
+                    <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--app-border)] pt-2 text-base font-semibold text-[var(--app-text)]">
+                      <span>
+                        {isSelectedCatalogItemByWeight
+                          ? `Total (${selectedItemWeightKg.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 3,
+                              maximumFractionDigits: 3,
+                            })} kg)`
+                          : `Total (${selectedItemQuantity}x)`}
+                      </span>
+                      <span>{formatCurrency(selectedItemTotal)}</span>
+                    </div>
+                  </section>
+                </>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={isDetailStatusBusy || !itemDraft.catalogItemId}
+                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Confirmar item
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
       {isQuickCreateItemModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
           <div className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:p-5">
@@ -2266,6 +2820,26 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
 
               <label className="block space-y-1">
                 <span className="text-sm font-medium text-[var(--app-text)]">
+                  Tipo de cobrança
+                </span>
+                <select
+                  value={quickCatalogItemForm.pricingType}
+                  disabled={createCatalogItemMutation.isPending}
+                  onChange={(event) =>
+                    setQuickCatalogItemForm((prev) => ({
+                      ...prev,
+                      pricingType: event.target.value as "UNIDADE" | "PESO",
+                    }))
+                  }
+                  className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+                >
+                  <option value="UNIDADE">Unidade</option>
+                  <option value="PESO">Peso (kg)</option>
+                </select>
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-sm font-medium text-[var(--app-text)]">
                   Preço
                 </span>
                 <input
@@ -2280,7 +2854,11 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                   type="number"
                   min={0}
                   step="0.01"
-                  placeholder="Ex: 19.90"
+                  placeholder={
+                    quickCatalogItemForm.pricingType === "PESO"
+                      ? "Ex: 69.90 por kg"
+                      : "Ex: 19.90"
+                  }
                   className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
                 />
               </label>
