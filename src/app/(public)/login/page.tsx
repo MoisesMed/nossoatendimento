@@ -259,8 +259,8 @@ export default function Page() {
         </div>
 
         <p className="mb-6 text-xs text-slate-500">
-          Cada usuario pertence ao tenant Lá Bavette Restô. No futuro, o
-          tenant sera resolvido por dominio.
+          Cada usuario pertence ao tenant Lá Bavette Restô. No futuro, o tenant
+          sera resolvido por dominio.
         </p>
 
         {mode === "login" ? (

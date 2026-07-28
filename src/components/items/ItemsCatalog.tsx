@@ -2334,7 +2334,9 @@ export default function ItemsCatalog({
                     : "",
                 price: resolvedPrice,
                 pricingType:
-                  item.pricing_type === "PESO" ? ("PESO" as const) : ("UNIDADE" as const),
+                  item.pricing_type === "PESO"
+                    ? ("PESO" as const)
+                    : ("UNIDADE" as const),
               };
             })
             .filter(
@@ -3131,10 +3133,14 @@ export default function ItemsCatalog({
                     <div
                       className={[
                         "flex flex-1 items-start",
-                        item.imageUrl ? "justify-between gap-4" : "justify-start",
+                        item.imageUrl
+                          ? "justify-between gap-4"
+                          : "justify-start",
                       ].join(" ")}
                     >
-                      <div className={item.imageUrl ? "min-w-0 flex-1" : "w-full"}>
+                      <div
+                        className={item.imageUrl ? "min-w-0 flex-1" : "w-full"}
+                      >
                         <Title as="h3" size="card" className="line-clamp-2">
                           {`${item.code} - ${item.name}`}
                         </Title>
@@ -3163,7 +3169,10 @@ export default function ItemsCatalog({
                               tone="muted"
                               className="line-through"
                             >
-                              {formatItemPriceLabel(item.price, item.pricing_type)}
+                              {formatItemPriceLabel(
+                                item.price,
+                                item.pricing_type,
+                              )}
                             </Text>
                             <Text
                               size="lg"
@@ -3177,7 +3186,10 @@ export default function ItemsCatalog({
                           </div>
                         ) : (
                           <Text size="lg" className="mt-2 font-semibold">
-                            {formatItemPriceLabel(item.price, item.pricing_type)}
+                            {formatItemPriceLabel(
+                              item.price,
+                              item.pricing_type,
+                            )}
                           </Text>
                         )}
                       </div>
@@ -3266,198 +3278,194 @@ export default function ItemsCatalog({
         }}
         panelClassName="max-h-[calc(100dvh-7rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[82dvh] sm:max-w-md sm:p-5"
       >
-            <div className="mb-4 flex items-center justify-between">
-              <Title as="h2" size="modal">
-                Novo item
-              </Title>
-              <button
-                type="button"
-                disabled={isCreateBusy}
-                onClick={() => setOpenCreate(false)}
-                className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Fechar modal"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+        <div className="mb-4 flex items-center justify-between">
+          <Title as="h2" size="modal">
+            Novo item
+          </Title>
+          <button
+            type="button"
+            disabled={isCreateBusy}
+            onClick={() => setOpenCreate(false)}
+            className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Fechar modal"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-            <form className="space-y-3" onSubmit={handleCreate}>
-              <FormLabel>
-                <span>Categoria</span>
-                <FormSelect
-                  value={formData.category}
-                  disabled={isCreateBusy}
-                  onChange={(event) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      category: event.target.value,
-                    }))
-                  }
-                >
-                  {orderedCategories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </FormSelect>
-              </FormLabel>
+        <form className="space-y-3" onSubmit={handleCreate}>
+          <FormLabel>
+            <span>Categoria</span>
+            <FormSelect
+              value={formData.category}
+              disabled={isCreateBusy}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  category: event.target.value,
+                }))
+              }
+            >
+              {orderedCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </FormSelect>
+          </FormLabel>
 
-              <FormLabel>
-                <span>Nome</span>
-                <FormInput
-                  value={formData.name}
-                  disabled={isCreateBusy}
-                  onChange={(event) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      name: event.target.value,
-                    }))
-                  }
+          <FormLabel>
+            <span>Nome</span>
+            <FormInput
+              value={formData.name}
+              disabled={isCreateBusy}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  name: event.target.value,
+                }))
+              }
+            />
+          </FormLabel>
+
+          <FormLabel>
+            <span>Tipo de cobrança</span>
+            <FormSelect
+              value={formData.pricingType}
+              disabled={isCreateBusy}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  pricingType: event.target.value as "UNIDADE" | "PESO",
+                }))
+              }
+            >
+              <option value="UNIDADE">Unidade</option>
+              <option value="PESO">Peso (kg)</option>
+            </FormSelect>
+          </FormLabel>
+
+          <FormLabel>
+            <span>Preço</span>
+            <FormInput
+              value={formData.priceMasked}
+              disabled={isCreateBusy}
+              onChange={(event) =>
+                handleMaskedPriceChange(
+                  "priceMasked",
+                  event.target.value,
+                  false,
+                )
+              }
+              onKeyDown={(event) =>
+                handleMaskedPriceKeyDown(event, "priceMasked", false)
+              }
+              inputMode="numeric"
+              placeholder={DEFAULT_PRICE_MASK}
+            />
+          </FormLabel>
+
+          <FormLabel>
+            <span>Preço promocional (opcional)</span>
+            <FormInput
+              value={formData.promotionalPriceMasked}
+              disabled={isCreateBusy}
+              onChange={(event) =>
+                handleMaskedPriceChange(
+                  "promotionalPriceMasked",
+                  event.target.value,
+                  true,
+                )
+              }
+              onKeyDown={(event) =>
+                handleMaskedPriceKeyDown(event, "promotionalPriceMasked", true)
+              }
+              inputMode="numeric"
+              placeholder={DEFAULT_PRICE_MASK}
+            />
+          </FormLabel>
+
+          <FormLabel>
+            <span>Serve pessoas</span>
+            <FormInput
+              value={formData.servesPeople}
+              disabled={isCreateBusy}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  servesPeople: event.target.value.replace(/\D/g, ""),
+                }))
+              }
+              inputMode="numeric"
+            />
+          </FormLabel>
+
+          <FormLabel>
+            <span>Descrição</span>
+            <FormTextarea
+              value={formData.description}
+              disabled={isCreateBusy}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  description: event.target.value,
+                }))
+              }
+              rows={3}
+            />
+          </FormLabel>
+
+          <FormLabel>
+            <span>Imagem</span>
+            <FormInput
+              ref={createFileInputRef}
+              type="file"
+              accept="image/*"
+              disabled={isCreateBusy || isUploadingImage}
+              onChange={(event) =>
+                void handleSelectImage(event.target.files?.[0] ?? null)
+              }
+              className="sr-only"
+            />
+            <button
+              type="button"
+              disabled={isCreateBusy || isUploadingImage}
+              onClick={() => createFileInputRef.current?.click()}
+              className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-left text-sm text-[var(--app-text)] disabled:opacity-60"
+            >
+              <span className="block w-full truncate">
+                {selectedImageName || "Escolher imagem"}
+              </span>
+            </button>
+            {previewImageUrl ? (
+              <div className="mt-2 flex justify-center">
+                <Image
+                  src={previewImageUrl}
+                  alt="Preview da imagem do item"
+                  width={120}
+                  height={120}
+                  unoptimized
+                  className="h-[120px] w-[120px] rounded-md border border-[var(--app-border)] object-cover"
                 />
-              </FormLabel>
+              </div>
+            ) : null}
+          </FormLabel>
 
-              <FormLabel>
-                <span>Tipo de cobrança</span>
-                <FormSelect
-                  value={formData.pricingType}
-                  disabled={isCreateBusy}
-                  onChange={(event) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      pricingType: event.target.value as "UNIDADE" | "PESO",
-                    }))
-                  }
-                >
-                  <option value="UNIDADE">Unidade</option>
-                  <option value="PESO">Peso (kg)</option>
-                </FormSelect>
-              </FormLabel>
-
-              <FormLabel>
-                <span>Preço</span>
-                <FormInput
-                  value={formData.priceMasked}
-                  disabled={isCreateBusy}
-                  onChange={(event) =>
-                    handleMaskedPriceChange(
-                      "priceMasked",
-                      event.target.value,
-                      false,
-                    )
-                  }
-                  onKeyDown={(event) =>
-                    handleMaskedPriceKeyDown(event, "priceMasked", false)
-                  }
-                  inputMode="numeric"
-                  placeholder={DEFAULT_PRICE_MASK}
-                />
-              </FormLabel>
-
-              <FormLabel>
-                <span>Preço promocional (opcional)</span>
-                <FormInput
-                  value={formData.promotionalPriceMasked}
-                  disabled={isCreateBusy}
-                  onChange={(event) =>
-                    handleMaskedPriceChange(
-                      "promotionalPriceMasked",
-                      event.target.value,
-                      true,
-                    )
-                  }
-                  onKeyDown={(event) =>
-                    handleMaskedPriceKeyDown(
-                      event,
-                      "promotionalPriceMasked",
-                      true,
-                    )
-                  }
-                  inputMode="numeric"
-                  placeholder={DEFAULT_PRICE_MASK}
-                />
-              </FormLabel>
-
-              <FormLabel>
-                <span>Serve pessoas</span>
-                <FormInput
-                  value={formData.servesPeople}
-                  disabled={isCreateBusy}
-                  onChange={(event) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      servesPeople: event.target.value.replace(/\D/g, ""),
-                    }))
-                  }
-                  inputMode="numeric"
-                />
-              </FormLabel>
-
-              <FormLabel>
-                <span>Descrição</span>
-                <FormTextarea
-                  value={formData.description}
-                  disabled={isCreateBusy}
-                  onChange={(event) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      description: event.target.value,
-                    }))
-                  }
-                  rows={3}
-                />
-              </FormLabel>
-
-              <FormLabel>
-                <span>Imagem</span>
-                <FormInput
-                  ref={createFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  disabled={isCreateBusy || isUploadingImage}
-                  onChange={(event) =>
-                    void handleSelectImage(event.target.files?.[0] ?? null)
-                  }
-                  className="sr-only"
-                />
-                <button
-                  type="button"
-                  disabled={isCreateBusy || isUploadingImage}
-                  onClick={() => createFileInputRef.current?.click()}
-                  className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-left text-sm text-[var(--app-text)] disabled:opacity-60"
-                >
-                  <span className="block w-full truncate">
-                    {selectedImageName || "Escolher imagem"}
-                  </span>
-                </button>
-                {previewImageUrl ? (
-                  <div className="mt-2 flex justify-center">
-                    <Image
-                      src={previewImageUrl}
-                      alt="Preview da imagem do item"
-                      width={120}
-                      height={120}
-                      unoptimized
-                      className="h-[120px] w-[120px] rounded-md border border-[var(--app-border)] object-cover"
-                    />
-                  </div>
-                ) : null}
-              </FormLabel>
-
-              <button
-                type="submit"
-                disabled={isCreateBusy || isUploadingImage}
-                className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:opacity-70"
-              >
-                {isCreateBusy || isUploadingImage ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : null}
-                {isUploadingImage
-                  ? "Otimizando imagem..."
-                  : isCreateBusy
-                    ? "Salvando..."
-                    : "Salvar item"}
-              </button>
-            </form>
+          <button
+            type="submit"
+            disabled={isCreateBusy || isUploadingImage}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:opacity-70"
+          >
+            {isCreateBusy || isUploadingImage ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : null}
+            {isUploadingImage
+              ? "Otimizando imagem..."
+              : isCreateBusy
+                ? "Salvando..."
+                : "Salvar item"}
+          </button>
+        </form>
       </AppModal>
 
       <AppModal
@@ -3471,215 +3479,211 @@ export default function ItemsCatalog({
         overlayClassName="overflow-x-hidden"
         panelClassName="box-border max-h-[calc(100dvh-7rem)] w-full overflow-x-hidden overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[82dvh] sm:max-w-md sm:p-5"
       >
-            <div className="mb-4 flex items-center justify-between">
-              <Title as="h2" size="modal">
-                Editar item
-              </Title>
-              <button
-                type="button"
-                disabled={isEditBusy}
-                onClick={() => setEditingItem(null)}
-                className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Fechar modal"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+        <div className="mb-4 flex items-center justify-between">
+          <Title as="h2" size="modal">
+            Editar item
+          </Title>
+          <button
+            type="button"
+            disabled={isEditBusy}
+            onClick={() => setEditingItem(null)}
+            className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Fechar modal"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-            <form className="space-y-3" onSubmit={handleUpdate}>
-              <FormLabel>
-                <span>Categoria</span>
-                <FormSelect
-                  value={formData.category}
-                  disabled={isEditBusy}
-                  onChange={(event) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      category: event.target.value,
-                    }))
-                  }
-                >
-                  {orderedCategories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </FormSelect>
-              </FormLabel>
+        <form className="space-y-3" onSubmit={handleUpdate}>
+          <FormLabel>
+            <span>Categoria</span>
+            <FormSelect
+              value={formData.category}
+              disabled={isEditBusy}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  category: event.target.value,
+                }))
+              }
+            >
+              {orderedCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </FormSelect>
+          </FormLabel>
 
-              <FormLabel>
-                <span>Nome</span>
-                <FormInput
-                  value={formData.name}
-                  disabled={isEditBusy}
-                  onChange={(event) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      name: event.target.value,
-                    }))
-                  }
+          <FormLabel>
+            <span>Nome</span>
+            <FormInput
+              value={formData.name}
+              disabled={isEditBusy}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  name: event.target.value,
+                }))
+              }
+            />
+          </FormLabel>
+
+          <FormLabel>
+            <span>Tipo de cobrança</span>
+            <FormSelect
+              value={formData.pricingType}
+              disabled={isEditBusy}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  pricingType: event.target.value as "UNIDADE" | "PESO",
+                }))
+              }
+            >
+              <option value="UNIDADE">Unidade</option>
+              <option value="PESO">Peso (kg)</option>
+            </FormSelect>
+          </FormLabel>
+
+          <FormLabel>
+            <span>Preço</span>
+            <FormInput
+              value={formData.priceMasked}
+              disabled={isEditBusy}
+              onChange={(event) =>
+                handleMaskedPriceChange(
+                  "priceMasked",
+                  event.target.value,
+                  false,
+                )
+              }
+              onKeyDown={(event) =>
+                handleMaskedPriceKeyDown(event, "priceMasked", false)
+              }
+              inputMode="numeric"
+              placeholder={DEFAULT_PRICE_MASK}
+            />
+          </FormLabel>
+
+          <FormLabel>
+            <span>Preço promocional (opcional)</span>
+            <FormInput
+              value={formData.promotionalPriceMasked}
+              disabled={isEditBusy}
+              onChange={(event) =>
+                handleMaskedPriceChange(
+                  "promotionalPriceMasked",
+                  event.target.value,
+                  true,
+                )
+              }
+              onKeyDown={(event) =>
+                handleMaskedPriceKeyDown(event, "promotionalPriceMasked", true)
+              }
+              inputMode="numeric"
+              placeholder={DEFAULT_PRICE_MASK}
+            />
+          </FormLabel>
+
+          <FormLabel>
+            <span>Serve pessoas</span>
+            <FormInput
+              value={formData.servesPeople}
+              disabled={isEditBusy}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  servesPeople: event.target.value.replace(/\D/g, ""),
+                }))
+              }
+              inputMode="numeric"
+            />
+          </FormLabel>
+
+          <FormLabel>
+            <span>Descrição</span>
+            <FormTextarea
+              value={formData.description}
+              disabled={isEditBusy}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  description: event.target.value,
+                }))
+              }
+              rows={3}
+            />
+          </FormLabel>
+
+          <FormLabel>
+            <span>Imagem</span>
+            <FormInput
+              ref={editFileInputRef}
+              type="file"
+              accept="image/*"
+              disabled={isEditBusy || isUploadingImage}
+              onChange={(event) =>
+                void handleSelectImage(event.target.files?.[0] ?? null)
+              }
+              className="sr-only"
+            />
+            <button
+              type="button"
+              disabled={isEditBusy || isUploadingImage}
+              onClick={() => editFileInputRef.current?.click()}
+              className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-left text-sm text-[var(--app-text)] disabled:opacity-60"
+            >
+              <span className="block w-full truncate">
+                {selectedImageName || "Escolher imagem"}
+              </span>
+            </button>
+            {previewImageUrl ? (
+              <div className="mt-2 flex justify-center">
+                <Image
+                  src={previewImageUrl}
+                  alt="Preview da imagem do item"
+                  width={120}
+                  height={120}
+                  unoptimized
+                  className="h-[120px] w-[120px] rounded-md border border-[var(--app-border)] object-cover"
                 />
-              </FormLabel>
+              </div>
+            ) : null}
+          </FormLabel>
 
-              <FormLabel>
-                <span>Tipo de cobrança</span>
-                <FormSelect
-                  value={formData.pricingType}
-                  disabled={isEditBusy}
-                  onChange={(event) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      pricingType: event.target.value as "UNIDADE" | "PESO",
-                    }))
-                  }
-                >
-                  <option value="UNIDADE">Unidade</option>
-                  <option value="PESO">Peso (kg)</option>
-                </FormSelect>
-              </FormLabel>
+          <button
+            type="submit"
+            disabled={isEditBusy || isUploadingImage || !hasEditItemChanges}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:opacity-70"
+          >
+            {isEditBusy || isUploadingImage ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : null}
+            {isUploadingImage
+              ? "Otimizando imagem..."
+              : isEditBusy
+                ? "Salvando..."
+                : "Salvar alterações"}
+          </button>
 
-              <FormLabel>
-                <span>Preço</span>
-                <FormInput
-                  value={formData.priceMasked}
-                  disabled={isEditBusy}
-                  onChange={(event) =>
-                    handleMaskedPriceChange(
-                      "priceMasked",
-                      event.target.value,
-                      false,
-                    )
-                  }
-                  onKeyDown={(event) =>
-                    handleMaskedPriceKeyDown(event, "priceMasked", false)
-                  }
-                  inputMode="numeric"
-                  placeholder={DEFAULT_PRICE_MASK}
-                />
-              </FormLabel>
+          <button
+            type="button"
+            disabled={isAnyBusy}
+            onClick={() => {
+              if (!editingItem) {
+                return;
+              }
 
-              <FormLabel>
-                <span>Preço promocional (opcional)</span>
-                <FormInput
-                  value={formData.promotionalPriceMasked}
-                  disabled={isEditBusy}
-                  onChange={(event) =>
-                    handleMaskedPriceChange(
-                      "promotionalPriceMasked",
-                      event.target.value,
-                      true,
-                    )
-                  }
-                  onKeyDown={(event) =>
-                    handleMaskedPriceKeyDown(
-                      event,
-                      "promotionalPriceMasked",
-                      true,
-                    )
-                  }
-                  inputMode="numeric"
-                  placeholder={DEFAULT_PRICE_MASK}
-                />
-              </FormLabel>
-
-              <FormLabel>
-                <span>Serve pessoas</span>
-                <FormInput
-                  value={formData.servesPeople}
-                  disabled={isEditBusy}
-                  onChange={(event) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      servesPeople: event.target.value.replace(/\D/g, ""),
-                    }))
-                  }
-                  inputMode="numeric"
-                />
-              </FormLabel>
-
-              <FormLabel>
-                <span>Descrição</span>
-                <FormTextarea
-                  value={formData.description}
-                  disabled={isEditBusy}
-                  onChange={(event) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      description: event.target.value,
-                    }))
-                  }
-                  rows={3}
-                />
-              </FormLabel>
-
-              <FormLabel>
-                <span>Imagem</span>
-                <FormInput
-                  ref={editFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  disabled={isEditBusy || isUploadingImage}
-                  onChange={(event) =>
-                    void handleSelectImage(event.target.files?.[0] ?? null)
-                  }
-                  className="sr-only"
-                />
-                <button
-                  type="button"
-                  disabled={isEditBusy || isUploadingImage}
-                  onClick={() => editFileInputRef.current?.click()}
-                  className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-left text-sm text-[var(--app-text)] disabled:opacity-60"
-                >
-                  <span className="block w-full truncate">
-                    {selectedImageName || "Escolher imagem"}
-                  </span>
-                </button>
-                {previewImageUrl ? (
-                  <div className="mt-2 flex justify-center">
-                    <Image
-                      src={previewImageUrl}
-                      alt="Preview da imagem do item"
-                      width={120}
-                      height={120}
-                      unoptimized
-                      className="h-[120px] w-[120px] rounded-md border border-[var(--app-border)] object-cover"
-                    />
-                  </div>
-                ) : null}
-              </FormLabel>
-
-              <button
-                type="submit"
-                disabled={isEditBusy || isUploadingImage || !hasEditItemChanges}
-                className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:opacity-70"
-              >
-                {isEditBusy || isUploadingImage ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : null}
-                {isUploadingImage
-                  ? "Otimizando imagem..."
-                  : isEditBusy
-                    ? "Salvando..."
-                    : "Salvar alterações"}
-              </button>
-
-              <button
-                type="button"
-                disabled={isAnyBusy}
-                onClick={() => {
-                  if (!editingItem) {
-                    return;
-                  }
-
-                  const deletingItem = editingItem;
-                  setEditingItem(null);
-                  void handleDelete(deletingItem);
-                }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <Trash2 className="h-4 w-4" /> Remover item
-              </button>
-            </form>
+              const deletingItem = editingItem;
+              setEditingItem(null);
+              void handleDelete(deletingItem);
+            }}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Trash2 className="h-4 w-4" /> Remover item
+          </button>
+        </form>
       </AppModal>
 
       <AppModal
@@ -3687,309 +3691,304 @@ export default function ItemsCatalog({
         onClose={() => setOpenAdditionalsModal(false)}
         panelClassName="max-h-[calc(100dvh-7rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[82dvh] sm:max-w-xl sm:p-5"
       >
-            <div className="mb-4 flex items-center justify-between">
-              <Title as="h2" size="modal">
-                Adicionais
-              </Title>
-              <button
-                type="button"
-                onClick={() => setOpenAdditionalsModal(false)}
-                className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80"
-                aria-label="Fechar modal de adicionais"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+        <div className="mb-4 flex items-center justify-between">
+          <Title as="h2" size="modal">
+            Adicionais
+          </Title>
+          <button
+            type="button"
+            onClick={() => setOpenAdditionalsModal(false)}
+            className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80"
+            aria-label="Fechar modal de adicionais"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-            {canManageItems ? (
-              <div className="mb-4">
-                <button
-                  type="button"
-                  disabled={isAnyBusy}
-                  onClick={() => {
-                    setOpenCreateAdditional((prev) => !prev);
-                    setAdditionalForm((prev) => ({
-                      ...prev,
-                      menuItemId: prev.menuItemId || items[0]?.id || "",
-                    }));
-                  }}
-                  className="inline-flex items-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+        {canManageItems ? (
+          <div className="mb-4">
+            <button
+              type="button"
+              disabled={isAnyBusy}
+              onClick={() => {
+                setOpenCreateAdditional((prev) => !prev);
+                setAdditionalForm((prev) => ({
+                  ...prev,
+                  menuItemId: prev.menuItemId || items[0]?.id || "",
+                }));
+              }}
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {openCreateAdditional
+                ? "Fechar novo adicional"
+                : "Criar adicional"}
+            </button>
+
+            {openCreateAdditional ? (
+              <div className="mt-3 space-y-3 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3">
+                <Text className="font-semibold text-[var(--app-text)]">
+                  Novo adicional
+                </Text>
+
+                <form
+                  className="grid grid-cols-1 gap-2"
+                  onSubmit={handleCreateAdditional}
                 >
-                  <Plus className="h-3.5 w-3.5" />
-                  {openCreateAdditional
-                    ? "Fechar novo adicional"
-                    : "Criar adicional"}
-                </button>
-
-                {openCreateAdditional ? (
-                  <div className="mt-3 space-y-3 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3">
-                    <Text className="font-semibold text-[var(--app-text)]">
-                      Novo adicional
-                    </Text>
-
-                    <form
-                      className="grid grid-cols-1 gap-2"
-                      onSubmit={handleCreateAdditional}
+                  <FormLabel>
+                    <span>Item</span>
+                    <FormSelect
+                      value={additionalForm.menuItemId}
+                      disabled={isCreateAdditionalBusy}
+                      onChange={(event) =>
+                        setAdditionalForm((prev) => ({
+                          ...prev,
+                          menuItemId: event.target.value,
+                        }))
+                      }
                     >
-                      <FormLabel>
-                        <span>Item</span>
-                        <FormSelect
-                          value={additionalForm.menuItemId}
-                          disabled={isCreateAdditionalBusy}
-                          onChange={(event) =>
-                            setAdditionalForm((prev) => ({
-                              ...prev,
-                              menuItemId: event.target.value,
-                            }))
-                          }
-                        >
-                          <option value="" disabled>
-                            Selecione o item
+                      <option value="" disabled>
+                        Selecione o item
+                      </option>
+                      {items
+                        .slice()
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {`${item.code} - ${item.name}`}
                           </option>
-                          {items
-                            .slice()
-                            .sort((a, b) => a.name.localeCompare(b.name))
-                            .map((item) => (
-                              <option key={item.id} value={item.id}>
-                                {`${item.code} - ${item.name}`}
-                              </option>
-                            ))}
-                        </FormSelect>
-                      </FormLabel>
+                        ))}
+                    </FormSelect>
+                  </FormLabel>
 
-                      <FormLabel>
-                        <span>Título</span>
-                        <FormInput
-                          value={additionalForm.title}
-                          disabled={isCreateAdditionalBusy}
-                          onChange={(event) =>
-                            setAdditionalForm((prev) => ({
-                              ...prev,
-                              title: event.target.value,
-                            }))
-                          }
-                          placeholder="Ex: Queijo extra"
-                        />
-                      </FormLabel>
+                  <FormLabel>
+                    <span>Título</span>
+                    <FormInput
+                      value={additionalForm.title}
+                      disabled={isCreateAdditionalBusy}
+                      onChange={(event) =>
+                        setAdditionalForm((prev) => ({
+                          ...prev,
+                          title: event.target.value,
+                        }))
+                      }
+                      placeholder="Ex: Queijo extra"
+                    />
+                  </FormLabel>
 
-                      <FormLabel>
-                        <span>Descrição</span>
-                        <FormTextarea
-                          value={additionalForm.description}
-                          disabled={isCreateAdditionalBusy}
-                          onChange={(event) =>
-                            setAdditionalForm((prev) => ({
-                              ...prev,
-                              description: event.target.value,
-                            }))
-                          }
-                          rows={2}
-                          placeholder="Opcional"
-                        />
-                      </FormLabel>
+                  <FormLabel>
+                    <span>Descrição</span>
+                    <FormTextarea
+                      value={additionalForm.description}
+                      disabled={isCreateAdditionalBusy}
+                      onChange={(event) =>
+                        setAdditionalForm((prev) => ({
+                          ...prev,
+                          description: event.target.value,
+                        }))
+                      }
+                      rows={2}
+                      placeholder="Opcional"
+                    />
+                  </FormLabel>
 
-                      <FormLabel>
-                        <span>Valor</span>
-                        <FormInput
-                          value={additionalForm.price}
-                          disabled={isCreateAdditionalBusy}
-                          onChange={(event) =>
-                            setAdditionalForm((prev) => ({
-                              ...prev,
-                              price: event.target.value,
-                            }))
-                          }
-                          inputMode="decimal"
-                          placeholder="0.00"
-                        />
-                      </FormLabel>
+                  <FormLabel>
+                    <span>Valor</span>
+                    <FormInput
+                      value={additionalForm.price}
+                      disabled={isCreateAdditionalBusy}
+                      onChange={(event) =>
+                        setAdditionalForm((prev) => ({
+                          ...prev,
+                          price: event.target.value,
+                        }))
+                      }
+                      inputMode="decimal"
+                      placeholder="0.00"
+                    />
+                  </FormLabel>
 
-                      <button
-                        type="submit"
-                        disabled={isCreateAdditionalBusy}
-                        className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-3 py-2 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        {isCreateAdditionalBusy ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : null}
-                        {isCreateAdditionalBusy
-                          ? "Salvando..."
-                          : "Salvar adicional"}
-                      </button>
-                    </form>
-                  </div>
-                ) : null}
+                  <button
+                    type="submit"
+                    disabled={isCreateAdditionalBusy}
+                    className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-3 py-2 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isCreateAdditionalBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    {isCreateAdditionalBusy
+                      ? "Salvando..."
+                      : "Salvar adicional"}
+                  </button>
+                </form>
               </div>
             ) : null}
+          </div>
+        ) : null}
 
-            {orderedAdditionals.length === 0 ? (
-              <Text tone="muted">Nenhum adicional cadastrado.</Text>
-            ) : (
-              <div className="space-y-2">
-                {orderedAdditionals.map((additional) => (
-                  <article
-                    key={additional.id}
-                    className="rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+        {orderedAdditionals.length === 0 ? (
+          <Text tone="muted">Nenhum adicional cadastrado.</Text>
+        ) : (
+          <div className="space-y-2">
+            {orderedAdditionals.map((additional) => (
+              <article
+                key={additional.id}
+                className="rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+              >
+                {editingAdditionalId === additional.id ? (
+                  <form
+                    className="grid grid-cols-1 gap-2"
+                    onSubmit={(event) =>
+                      void handleSaveAdditionalEdit(event, additional)
+                    }
                   >
-                    {editingAdditionalId === additional.id ? (
-                      <form
-                        className="grid grid-cols-1 gap-2"
-                        onSubmit={(event) =>
-                          void handleSaveAdditionalEdit(event, additional)
+                    <FormLabel>
+                      <span>Item</span>
+                      <FormSelect
+                        value={additionalEditForm.menuItemId}
+                        disabled={isEditAdditionalBusy}
+                        onChange={(event) =>
+                          setAdditionalEditForm((prev) => ({
+                            ...prev,
+                            menuItemId: event.target.value,
+                          }))
                         }
                       >
-                        <FormLabel>
-                          <span>Item</span>
-                          <FormSelect
-                            value={additionalEditForm.menuItemId}
-                            disabled={isEditAdditionalBusy}
-                            onChange={(event) =>
-                              setAdditionalEditForm((prev) => ({
-                                ...prev,
-                                menuItemId: event.target.value,
-                              }))
-                            }
-                          >
-                            <option value="" disabled>
-                              Selecione o item
+                        <option value="" disabled>
+                          Selecione o item
+                        </option>
+                        {items
+                          .slice()
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                          .map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {`${item.code} - ${item.name}`}
                             </option>
-                            {items
-                              .slice()
-                              .sort((a, b) => a.name.localeCompare(b.name))
-                              .map((item) => (
-                                <option key={item.id} value={item.id}>
-                                  {`${item.code} - ${item.name}`}
-                                </option>
-                              ))}
-                          </FormSelect>
-                        </FormLabel>
+                          ))}
+                      </FormSelect>
+                    </FormLabel>
 
-                        <FormLabel>
-                          <span>Título</span>
-                          <FormInput
-                            value={additionalEditForm.title}
-                            disabled={isEditAdditionalBusy}
-                            onChange={(event) =>
-                              setAdditionalEditForm((prev) => ({
-                                ...prev,
-                                title: event.target.value,
-                              }))
-                            }
-                          />
-                        </FormLabel>
+                    <FormLabel>
+                      <span>Título</span>
+                      <FormInput
+                        value={additionalEditForm.title}
+                        disabled={isEditAdditionalBusy}
+                        onChange={(event) =>
+                          setAdditionalEditForm((prev) => ({
+                            ...prev,
+                            title: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormLabel>
 
-                        <FormLabel>
-                          <span>Descrição</span>
-                          <FormTextarea
-                            value={additionalEditForm.description}
-                            disabled={isEditAdditionalBusy}
-                            onChange={(event) =>
-                              setAdditionalEditForm((prev) => ({
-                                ...prev,
-                                description: event.target.value,
-                              }))
-                            }
-                            rows={2}
-                          />
-                        </FormLabel>
+                    <FormLabel>
+                      <span>Descrição</span>
+                      <FormTextarea
+                        value={additionalEditForm.description}
+                        disabled={isEditAdditionalBusy}
+                        onChange={(event) =>
+                          setAdditionalEditForm((prev) => ({
+                            ...prev,
+                            description: event.target.value,
+                          }))
+                        }
+                        rows={2}
+                      />
+                    </FormLabel>
 
-                        <FormLabel>
-                          <span>Valor</span>
-                          <FormInput
-                            value={additionalEditForm.price}
-                            disabled={isEditAdditionalBusy}
-                            onChange={(event) =>
-                              setAdditionalEditForm((prev) => ({
-                                ...prev,
-                                price: event.target.value,
-                              }))
-                            }
-                            inputMode="decimal"
-                          />
-                        </FormLabel>
+                    <FormLabel>
+                      <span>Valor</span>
+                      <FormInput
+                        value={additionalEditForm.price}
+                        disabled={isEditAdditionalBusy}
+                        onChange={(event) =>
+                          setAdditionalEditForm((prev) => ({
+                            ...prev,
+                            price: event.target.value,
+                          }))
+                        }
+                        inputMode="decimal"
+                      />
+                    </FormLabel>
 
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="submit"
-                            disabled={isEditAdditionalBusy}
-                            className="inline-flex items-center justify-center gap-1 rounded-md bg-[var(--app-primary)] px-2 py-2 text-xs font-semibold text-[var(--app-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-70"
-                          >
-                            {isEditAdditionalBusy ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : null}
-                            Salvar
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isEditAdditionalBusy}
-                            onClick={() => setEditingAdditionalId(null)}
-                            className="inline-flex items-center justify-center gap-1 rounded-md border border-[var(--app-border)] px-2 py-2 text-xs font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            Cancelar
-                          </button>
-                        </div>
-                      </form>
-                    ) : (
-                      <>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <Title as="h3" size="card" className="line-clamp-1">
-                              {additional.title}
-                            </Title>
-                            <Text
-                              tone="muted"
-                              size="sm"
-                              className="mt-1 line-clamp-2"
-                            >
-                              {additional.description?.trim() ||
-                                "Sem descrição."}
-                            </Text>
-                            {additional.item_name ? (
-                              <Text tone="muted" size="sm" className="mt-1">
-                                Item: {additional.item_name}
-                              </Text>
-                            ) : null}
-                          </div>
-
-                          <Text
-                            size="lg"
-                            className="whitespace-nowrap font-semibold"
-                          >
-                            {formatPriceLabel(additional.price)}
-                          </Text>
-                        </div>
-
-                        {canManageItems ? (
-                          <div className="mt-2 grid grid-cols-2 gap-2">
-                            <button
-                              type="button"
-                              disabled={isAnyBusy}
-                              onClick={() =>
-                                handleStartEditAdditional(additional)
-                              }
-                              className="inline-flex items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <Pencil className="h-3.5 w-3.5" /> Editar
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={isAnyBusy}
-                              onClick={() =>
-                                setAdditionalPendingDelete(additional)
-                              }
-                              className="inline-flex items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" /> Remover
-                            </button>
-                          </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="submit"
+                        disabled={isEditAdditionalBusy}
+                        className="inline-flex items-center justify-center gap-1 rounded-md bg-[var(--app-primary)] px-2 py-2 text-xs font-semibold text-[var(--app-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {isEditAdditionalBusy ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : null}
-                      </>
-                    )}
-                  </article>
-                ))}
-              </div>
-            )}
+                        Salvar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isEditAdditionalBusy}
+                        onClick={() => setEditingAdditionalId(null)}
+                        className="inline-flex items-center justify-center gap-1 rounded-md border border-[var(--app-border)] px-2 py-2 text-xs font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Title as="h3" size="card" className="line-clamp-1">
+                          {additional.title}
+                        </Title>
+                        <Text
+                          tone="muted"
+                          size="sm"
+                          className="mt-1 line-clamp-2"
+                        >
+                          {additional.description?.trim() || "Sem descrição."}
+                        </Text>
+                        {additional.item_name ? (
+                          <Text tone="muted" size="sm" className="mt-1">
+                            Item: {additional.item_name}
+                          </Text>
+                        ) : null}
+                      </div>
+
+                      <Text
+                        size="lg"
+                        className="whitespace-nowrap font-semibold"
+                      >
+                        {formatPriceLabel(additional.price)}
+                      </Text>
+                    </div>
+
+                    {canManageItems ? (
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={isAnyBusy}
+                          onClick={() => handleStartEditAdditional(additional)}
+                          className="inline-flex items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> Editar
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isAnyBusy}
+                          onClick={() => setAdditionalPendingDelete(additional)}
+                          className="inline-flex items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Remover
+                        </button>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
       </AppModal>
 
       <AppModal

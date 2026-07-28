@@ -4,10 +4,20 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, UserPlus } from "lucide-react";
 import { toast } from "react-toastify";
+import { cn } from "@/lib/cn";
 
-type EmployeeRole = "ATENDENTE" | "USUARIO";
+type EmployeeRole = "DONO" | "ATENDENTE" | "USUARIO";
+
+type EmployeeFormErrors = {
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  password?: string;
+  confirmPassword?: string;
+};
 
 const roleLabels: Record<EmployeeRole, string> = {
+  DONO: "Dono",
   ATENDENTE: "Atendente",
   USUARIO: "Usuario",
 };
@@ -20,7 +30,59 @@ export default function CreateEmployeeForm() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState<EmployeeRole>("ATENDENTE");
+  const [errors, setErrors] = useState<EmployeeFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const clearFieldError = (field: keyof EmployeeFormErrors) => {
+    setErrors((current) => {
+      if (!current[field]) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [field]: undefined,
+      };
+    });
+  };
+
+  const validateForm = () => {
+    const nextErrors: EmployeeFormErrors = {};
+    const normalizedEmail = email.trim();
+    const normalizedPhone = phone.replace(/\D/g, "");
+
+    if (fullName.trim().length < 3) {
+      nextErrors.fullName = "Informe o nome completo";
+    }
+
+    if (!normalizedEmail) {
+      nextErrors.email = "Informe um email valido";
+    } else {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(normalizedEmail)) {
+        nextErrors.email = "Informe um email valido";
+      }
+    }
+
+    if (normalizedPhone.length < 10) {
+      nextErrors.phone = "Informe um telefone valido com DDD";
+    } else if (normalizedPhone.length > 15) {
+      nextErrors.phone = "Numero muito longo";
+    }
+
+    if (password.length < 6) {
+      nextErrors.password = "A senha precisa ter pelo menos 6 caracteres";
+    }
+
+    if (confirmPassword.length < 6) {
+      nextErrors.confirmPassword = "Confirme a senha";
+    } else if (password !== confirmPassword) {
+      nextErrors.confirmPassword = "As senhas nao conferem";
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -29,8 +91,7 @@ export default function CreateEmployeeForm() {
       return;
     }
 
-    if (password !== confirmPassword) {
-      toast.error("As senhas nao conferem.");
+    if (!validateForm()) {
       return;
     }
 
@@ -43,8 +104,8 @@ export default function CreateEmployeeForm() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          fullName,
-          email,
+          fullName: fullName.trim(),
+          email: email.trim(),
           phone,
           password,
           role,
@@ -66,6 +127,7 @@ export default function CreateEmployeeForm() {
       setPassword("");
       setConfirmPassword("");
       setRole("ATENDENTE");
+      setErrors({});
       router.refresh();
     } catch (error) {
       const message =
@@ -88,21 +150,30 @@ export default function CreateEmployeeForm() {
         </p>
       </div>
 
-      <form className="space-y-4" onSubmit={handleSubmit}>
+      <form className="space-y-4" noValidate onSubmit={handleSubmit}>
         <label className="block space-y-1">
           <span className="text-sm font-medium text-[var(--app-text)]">
             Nome completo
           </span>
           <input
             type="text"
-            required
-            minLength={3}
             value={fullName}
             disabled={isSubmitting}
-            onChange={(event) => setFullName(event.target.value)}
+            onChange={(event) => {
+              setFullName(event.target.value);
+              clearFieldError("fullName");
+            }}
             placeholder="Nome e sobrenome"
-            className="w-full rounded-md border border-[var(--app-border)] bg-white px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+            className={cn(
+              "w-full rounded-md border bg-white px-3 py-2 text-sm text-[var(--app-text)] outline-none transition",
+              errors.fullName
+                ? "border-red-500"
+                : "border-[var(--app-border)] focus:border-[var(--app-primary)]",
+            )}
           />
+          {errors.fullName ? (
+            <p className="text-xs text-red-500">{errors.fullName}</p>
+          ) : null}
         </label>
 
         <label className="block space-y-1">
@@ -111,13 +182,23 @@ export default function CreateEmployeeForm() {
           </span>
           <input
             type="email"
-            required
             value={email}
             disabled={isSubmitting}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              clearFieldError("email");
+            }}
             placeholder="funcionario@restaurante.com"
-            className="w-full rounded-md border border-[var(--app-border)] bg-white px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+            className={cn(
+              "w-full rounded-md border bg-white px-3 py-2 text-sm text-[var(--app-text)] outline-none transition",
+              errors.email
+                ? "border-red-500"
+                : "border-[var(--app-border)] focus:border-[var(--app-primary)]",
+            )}
           />
+          {errors.email ? (
+            <p className="text-xs text-red-500">{errors.email}</p>
+          ) : null}
         </label>
 
         <label className="block space-y-1">
@@ -126,13 +207,23 @@ export default function CreateEmployeeForm() {
           </span>
           <input
             type="text"
-            required
             value={phone}
             disabled={isSubmitting}
-            onChange={(event) => setPhone(event.target.value)}
+            onChange={(event) => {
+              setPhone(event.target.value);
+              clearFieldError("phone");
+            }}
             placeholder="11999999999"
-            className="w-full rounded-md border border-[var(--app-border)] bg-white px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+            className={cn(
+              "w-full rounded-md border bg-white px-3 py-2 text-sm text-[var(--app-text)] outline-none transition",
+              errors.phone
+                ? "border-red-500"
+                : "border-[var(--app-border)] focus:border-[var(--app-primary)]",
+            )}
           />
+          {errors.phone ? (
+            <p className="text-xs text-red-500">{errors.phone}</p>
+          ) : null}
         </label>
 
         <label className="block space-y-1">
@@ -141,14 +232,23 @@ export default function CreateEmployeeForm() {
           </span>
           <input
             type="text"
-            required
-            minLength={6}
             value={password}
             disabled={isSubmitting}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={(event) => {
+              setPassword(event.target.value);
+              clearFieldError("password");
+            }}
             placeholder="Minimo 6 caracteres"
-            className="w-full rounded-md border border-[var(--app-border)] bg-white px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+            className={cn(
+              "w-full rounded-md border bg-white px-3 py-2 text-sm text-[var(--app-text)] outline-none transition",
+              errors.password
+                ? "border-red-500"
+                : "border-[var(--app-border)] focus:border-[var(--app-primary)]",
+            )}
           />
+          {errors.password ? (
+            <p className="text-xs text-red-500">{errors.password}</p>
+          ) : null}
         </label>
 
         <label className="block space-y-1">
@@ -157,14 +257,23 @@ export default function CreateEmployeeForm() {
           </span>
           <input
             type="text"
-            required
-            minLength={6}
             value={confirmPassword}
             disabled={isSubmitting}
-            onChange={(event) => setConfirmPassword(event.target.value)}
+            onChange={(event) => {
+              setConfirmPassword(event.target.value);
+              clearFieldError("confirmPassword");
+            }}
             placeholder="Repita a senha"
-            className="w-full rounded-md border border-[var(--app-border)] bg-white px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+            className={cn(
+              "w-full rounded-md border bg-white px-3 py-2 text-sm text-[var(--app-text)] outline-none transition",
+              errors.confirmPassword
+                ? "border-red-500"
+                : "border-[var(--app-border)] focus:border-[var(--app-primary)]",
+            )}
           />
+          {errors.confirmPassword ? (
+            <p className="text-xs text-red-500">{errors.confirmPassword}</p>
+          ) : null}
         </label>
 
         <label className="block space-y-1">
@@ -177,6 +286,7 @@ export default function CreateEmployeeForm() {
             onChange={(event) => setRole(event.target.value as EmployeeRole)}
             className="w-full rounded-md border border-[var(--app-border)] bg-white px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
           >
+            <option value="DONO">{roleLabels.DONO}</option>
             <option value="ATENDENTE">{roleLabels.ATENDENTE}</option>
             <option value="USUARIO">{roleLabels.USUARIO}</option>
           </select>

@@ -47,7 +47,10 @@ export default function AppModal({
         onClose?.();
       }}
     >
-      <div className={panelClassName} onClick={(event) => event.stopPropagation()}>
+      <div
+        className={panelClassName}
+        onClick={(event) => event.stopPropagation()}
+      >
         {children}
       </div>
     </div>
