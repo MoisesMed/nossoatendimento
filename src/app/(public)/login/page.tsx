@@ -37,10 +37,38 @@ const registerSchema = z
 type LoginInput = z.infer<typeof loginSchema>;
 type RegisterInput = z.infer<typeof registerSchema>;
 
+function resolveLoginErrorMessage(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return "Falha no login. Verifique email e senha.";
+  }
+
+  const typedError = error as {
+    code?: string;
+    message?: string;
+  };
+
+  const normalizedCode = (typedError.code ?? "").toLowerCase();
+  const normalizedMessage = (typedError.message ?? "").toLowerCase();
+
+  if (
+    normalizedCode === "invalid_credentials" ||
+    normalizedMessage.includes("invalid login credentials")
+  ) {
+    return "Email ou senha invalidos.";
+  }
+
+  if (normalizedMessage.includes("email not confirmed")) {
+    return "Confirme seu email antes de entrar.";
+  }
+
+  return "Falha no login. Verifique email e senha.";
+}
+
 export default function Page() {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [accessWarning, setAccessWarning] = useState<string | null>(null);
+  const [loginFeedback, setLoginFeedback] = useState<string | null>(null);
   const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState<
     string | null
   >(null);
@@ -167,6 +195,7 @@ export default function Page() {
 
   const onLoginSubmit = async (data: LoginInput) => {
     try {
+      setLoginFeedback(null);
       const supabase = createClient();
       await loginMutation.mutateAsync(data);
 
@@ -176,15 +205,15 @@ export default function Page() {
       setPendingConfirmationEmail(null);
       router.replace("/mesas");
     } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes("Email not confirmed")
-      ) {
-        toast.info("Confirme seu email antes de entrar.");
+      const message = resolveLoginErrorMessage(error);
+      setLoginFeedback(message);
+
+      if (message.includes("Confirme seu email")) {
+        toast.info(message);
         return;
       }
 
-      toast.error("Falha no login. Verifique email e senha.");
+      toast.error(message);
     }
   };
 
@@ -252,6 +281,12 @@ export default function Page() {
               </div>
             ) : null}
 
+            {loginFeedback ? (
+              <div className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+                {loginFeedback}
+              </div>
+            ) : null}
+
             <label className="block space-y-1">
               <span className="text-sm font-medium">Email</span>
               <input
@@ -307,6 +342,7 @@ export default function Page() {
               type="button"
               disabled={isLoginLoading}
               onClick={() => {
+                setLoginFeedback(null);
                 setPendingConfirmationEmail(null);
                 setMode("register");
               }}
@@ -323,7 +359,10 @@ export default function Page() {
             <button
               type="button"
               disabled={isRegisterLoading}
-              onClick={() => setMode("login")}
+              onClick={() => {
+                setLoginFeedback(null);
+                setMode("login");
+              }}
               className="mb-2 inline-flex items-center gap-1 text-sm text-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <ArrowLeft className="h-4 w-4" /> Voltar para login

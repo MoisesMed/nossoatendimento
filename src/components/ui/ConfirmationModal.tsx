@@ -1,5 +1,6 @@
 import { Loader2, X } from "lucide-react";
 import { Title } from "@/components/ui/Typography";
+import AppModal from "@/components/ui/AppModal";
 
 type ConfirmationModalProps = {
   isOpen: boolean;
@@ -31,8 +32,11 @@ export default function ConfirmationModal({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
-      <div className="w-full rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-w-md sm:p-5">
+    <AppModal
+      isOpen={isOpen}
+      onClose={onClose}
+      panelClassName="w-full rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-w-md sm:p-5"
+    >
         <div className="mb-3 flex items-center justify-between">
           <Title as="h2" size="modal">
             {title}
@@ -77,7 +81,6 @@ export default function ConfirmationModal({
             {confirmLabel}
           </button>
         </div>
-      </div>
-    </div>
+    </AppModal>
   );
 }

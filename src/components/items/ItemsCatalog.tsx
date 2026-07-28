@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { Text, Title } from "@/components/ui/Typography";
+import AppModal from "@/components/ui/AppModal";
 import ConfirmationModal from "@/components/ui/ConfirmationModal";
 import {
   FormInput,
@@ -144,6 +145,11 @@ function formatPriceLabel(value: number) {
     style: "currency",
     currency: "BRL",
   });
+}
+
+function formatItemPriceLabel(value: number, pricingType: "UNIDADE" | "PESO") {
+  const baseLabel = formatPriceLabel(value);
+  return pricingType === "PESO" ? `${baseLabel}/KG` : baseLabel;
 }
 
 function areCategoryOrdersEqual(left: string[], right: string[]) {
@@ -809,10 +815,13 @@ export default function ItemsCatalog({
     }, 2000);
   };
 
-  const optimizeImage = async (file: File) => {
+  const optimizeImage = async (
+    file: File,
+    constraints: { maxWidth?: number; maxHeight?: number } = {},
+  ) => {
     const bitmap = await createImageBitmap(file);
-    const maxWidth = 960;
-    const maxHeight = 960;
+    const maxWidth = constraints.maxWidth ?? 960;
+    const maxHeight = constraints.maxHeight ?? 960;
 
     const scale = Math.min(
       maxWidth / bitmap.width,
@@ -876,7 +885,10 @@ export default function ItemsCatalog({
     }
 
     try {
-      const optimized = await optimizeImage(file);
+      const optimized = await optimizeImage(file, {
+        maxWidth: 120,
+        maxHeight: 120,
+      });
       setSelectedImageFile(optimized);
       setPreviewImageUrl(URL.createObjectURL(optimized));
       setSelectedImageName(file.name);
@@ -965,7 +977,11 @@ export default function ItemsCatalog({
   }, [editingCategory]);
 
   useEffect(() => {
-    if (!isCardapioMenuOpen && !isTopActionsMenuOpen && !openCategoryActionsMenu) {
+    if (
+      !isCardapioMenuOpen &&
+      !isTopActionsMenuOpen &&
+      !openCategoryActionsMenu
+    ) {
       return;
     }
 
@@ -2275,7 +2291,11 @@ export default function ItemsCatalog({
   };
 
   const handlePrintSimpleMenu = () => {
-    const printWindow = window.open("about:blank", "_blank", "width=900,height=1200");
+    const printWindow = window.open(
+      "about:blank",
+      "_blank",
+      "width=900,height=1200",
+    );
 
     if (!printWindow) {
       toast.error("Não foi possível abrir a janela de impressão.");
@@ -2313,6 +2333,8 @@ export default function ItemsCatalog({
                     ? item.description.trim()
                     : "",
                 price: resolvedPrice,
+                pricingType:
+                  item.pricing_type === "PESO" ? ("PESO" as const) : ("UNIDADE" as const),
               };
             })
             .filter(
@@ -2323,6 +2345,7 @@ export default function ItemsCatalog({
                 name: string;
                 description: string;
                 price: number;
+                pricingType: "UNIDADE" | "PESO";
               } => item !== null,
             );
 
@@ -2367,6 +2390,7 @@ export default function ItemsCatalog({
           name: string;
           description: string;
           price: number;
+          pricingType: "UNIDADE" | "PESO";
         }>;
       }) => {
         const itemsHtml = category.items
@@ -2375,7 +2399,7 @@ export default function ItemsCatalog({
               <li class="item-row">
                 <div class="item-main-row">
                   <span class="item-name">${item.code} - ${escapeHtml(item.name)}</span>
-                  <span class="item-price">${formatCurrency(item.price)}</span>
+                  <span class="item-price">${item.pricingType === "PESO" ? `${formatCurrency(item.price)}/KG` : formatCurrency(item.price)}</span>
                 </div>
                 ${item.description ? `<p class="item-description">${escapeHtml(item.description)}</p>` : ""}
               </li>
@@ -3104,8 +3128,13 @@ export default function ItemsCatalog({
                         : "",
                     ].join(" ")}
                   >
-                    <div className="flex flex-1 items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1">
+                    <div
+                      className={[
+                        "flex flex-1 items-start",
+                        item.imageUrl ? "justify-between gap-4" : "justify-start",
+                      ].join(" ")}
+                    >
+                      <div className={item.imageUrl ? "min-w-0 flex-1" : "w-full"}>
                         <Title as="h3" size="card" className="line-clamp-2">
                           {`${item.code} - ${item.name}`}
                         </Title>
@@ -3134,51 +3163,42 @@ export default function ItemsCatalog({
                               tone="muted"
                               className="line-through"
                             >
-                              {formatPriceLabel(item.price)}
+                              {formatItemPriceLabel(item.price, item.pricing_type)}
                             </Text>
                             <Text
                               size="lg"
                               className="font-semibold text-emerald-700"
                             >
-                              {formatPriceLabel(item.promotional_price)}
+                              {formatItemPriceLabel(
+                                item.promotional_price,
+                                item.pricing_type,
+                              )}
                             </Text>
                           </div>
                         ) : (
                           <Text size="lg" className="mt-2 font-semibold">
-                            {formatPriceLabel(item.price)}
+                            {formatItemPriceLabel(item.price, item.pricing_type)}
                           </Text>
                         )}
                       </div>
 
-                      <div className="relative h-20 w-32 shrink-0 overflow-hidden rounded-md bg-[var(--app-surface-muted)] sm:h-24 sm:w-44">
-                        {item.imageUrl ? (
+                      {item.imageUrl ? (
+                        <div className="relative h-[120px] w-[120px] shrink-0 overflow-hidden rounded-md bg-[var(--app-surface-muted)]">
                           <Image
                             src={item.imageUrl}
                             alt={`Imagem do item ${item.name}`}
                             fill
                             draggable={false}
-                            sizes="(max-width: 640px) 176px, 208px"
+                            sizes="120px"
                             quality={60}
+                            className="object-cover"
                           />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-xs text-[var(--app-muted)]">
-                            Sem imagem
-                          </div>
-                        )}
-                      </div>
+                        </div>
+                      ) : null}
                     </div>
 
                     {canManageItems ? (
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        <button
-                          type="button"
-                          disabled={isAnyBusy}
-                          onClick={() => handleOpenEdit(item)}
-                          className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <Pencil className="h-3.5 w-3.5" /> Editar
-                        </button>
-
+                      <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
                         <FormShadcnSelect
                           id={`item-category-select-${item.id}`}
                           value={item.category}
@@ -3196,8 +3216,17 @@ export default function ItemsCatalog({
                         <button
                           type="button"
                           disabled={isAnyBusy}
-                          onClick={() => void handleDelete(item)}
+                          onClick={() => handleOpenEdit(item)}
                           className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> Editar
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isAnyBusy}
+                          onClick={() => void handleDelete(item)}
+                          className="hidden w-full items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50 md:inline-flex"
                         >
                           {isDeleting ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -3227,9 +3256,16 @@ export default function ItemsCatalog({
         ) : null}
       </div>
 
-      {openCreate ? (
-        <div className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
-          <div className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:p-5">
+      <AppModal
+        isOpen={openCreate}
+        onClose={() => {
+          if (isCreateBusy) {
+            return;
+          }
+          setOpenCreate(false);
+        }}
+        panelClassName="max-h-[calc(100dvh-7rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[82dvh] sm:max-w-md sm:p-5"
+      >
             <div className="mb-4 flex items-center justify-between">
               <Title as="h2" size="modal">
                 Novo item
@@ -3389,17 +3425,21 @@ export default function ItemsCatalog({
                   onClick={() => createFileInputRef.current?.click()}
                   className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-left text-sm text-[var(--app-text)] disabled:opacity-60"
                 >
-                  {selectedImageName || "Escolher imagem"}
+                  <span className="block w-full truncate">
+                    {selectedImageName || "Escolher imagem"}
+                  </span>
                 </button>
                 {previewImageUrl ? (
-                  <Image
-                    src={previewImageUrl}
-                    alt="Preview da imagem do item"
-                    width={640}
-                    height={192}
-                    unoptimized
-                    className="h-28 w-full rounded-md border border-[var(--app-border)] p-1"
-                  />
+                  <div className="mt-2 flex justify-center">
+                    <Image
+                      src={previewImageUrl}
+                      alt="Preview da imagem do item"
+                      width={120}
+                      height={120}
+                      unoptimized
+                      className="h-[120px] w-[120px] rounded-md border border-[var(--app-border)] object-cover"
+                    />
+                  </div>
                 ) : null}
               </FormLabel>
 
@@ -3418,13 +3458,19 @@ export default function ItemsCatalog({
                     : "Salvar item"}
               </button>
             </form>
-          </div>
-        </div>
-      ) : null}
+      </AppModal>
 
-      {editingItem ? (
-        <div className="fixed inset-0 z-40 flex items-end overflow-x-hidden overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
-          <div className="box-border max-h-[calc(100dvh-1.5rem)] w-full overflow-x-hidden overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:p-5">
+      <AppModal
+        isOpen={Boolean(editingItem)}
+        onClose={() => {
+          if (isEditBusy) {
+            return;
+          }
+          setEditingItem(null);
+        }}
+        overlayClassName="overflow-x-hidden"
+        panelClassName="box-border max-h-[calc(100dvh-7rem)] w-full overflow-x-hidden overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[82dvh] sm:max-w-md sm:p-5"
+      >
             <div className="mb-4 flex items-center justify-between">
               <Title as="h2" size="modal">
                 Editar item
@@ -3584,17 +3630,21 @@ export default function ItemsCatalog({
                   onClick={() => editFileInputRef.current?.click()}
                   className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-left text-sm text-[var(--app-text)] disabled:opacity-60"
                 >
-                  {selectedImageName || "Escolher imagem"}
+                  <span className="block w-full truncate">
+                    {selectedImageName || "Escolher imagem"}
+                  </span>
                 </button>
                 {previewImageUrl ? (
-                  <Image
-                    src={previewImageUrl}
-                    alt="Preview da imagem do item"
-                    width={640}
-                    height={192}
-                    unoptimized
-                    className="h-28 w-full rounded-md border border-[var(--app-border)] p-1"
-                  />
+                  <div className="mt-2 flex justify-center">
+                    <Image
+                      src={previewImageUrl}
+                      alt="Preview da imagem do item"
+                      width={120}
+                      height={120}
+                      unoptimized
+                      className="h-[120px] w-[120px] rounded-md border border-[var(--app-border)] object-cover"
+                    />
+                  </div>
                 ) : null}
               </FormLabel>
 
@@ -3612,14 +3662,31 @@ export default function ItemsCatalog({
                     ? "Salvando..."
                     : "Salvar alterações"}
               </button>
-            </form>
-          </div>
-        </div>
-      ) : null}
 
-      {openAdditionalsModal && canManageItems ? (
-        <div className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
-          <div className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-xl sm:p-5">
+              <button
+                type="button"
+                disabled={isAnyBusy}
+                onClick={() => {
+                  if (!editingItem) {
+                    return;
+                  }
+
+                  const deletingItem = editingItem;
+                  setEditingItem(null);
+                  void handleDelete(deletingItem);
+                }}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Trash2 className="h-4 w-4" /> Remover item
+              </button>
+            </form>
+      </AppModal>
+
+      <AppModal
+        isOpen={openAdditionalsModal && canManageItems}
+        onClose={() => setOpenAdditionalsModal(false)}
+        panelClassName="max-h-[calc(100dvh-7rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[82dvh] sm:max-w-xl sm:p-5"
+      >
             <div className="mb-4 flex items-center justify-between">
               <Title as="h2" size="modal">
                 Adicionais
@@ -3923,19 +3990,15 @@ export default function ItemsCatalog({
                 ))}
               </div>
             )}
-          </div>
-        </div>
-      ) : null}
+      </AppModal>
 
-      {previewItem && !canManageItems ? (
-        <div
-          className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center"
-          onClick={() => setPreviewItem(null)}
-        >
-          <div
-            className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-lg sm:p-5"
-            onClick={(event) => event.stopPropagation()}
-          >
+      <AppModal
+        isOpen={Boolean(previewItem) && !canManageItems}
+        onClose={() => setPreviewItem(null)}
+        panelClassName="max-h-[calc(100dvh-7rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[82dvh] sm:max-w-lg sm:p-5"
+      >
+        {previewItem ? (
+          <>
             <div className="mb-4 flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <Title as="h2" size="modal" className="line-clamp-2">
@@ -4030,10 +4093,16 @@ export default function ItemsCatalog({
               previewItem.promotional_price < previewItem.price ? (
                 <>
                   <Text tone="muted" size="sm" className="line-through">
-                    {formatPriceLabel(previewItem.price)}
+                    {formatItemPriceLabel(
+                      previewItem.price,
+                      previewItem.pricing_type,
+                    )}
                   </Text>
                   <Text size="lg" className="font-semibold text-emerald-700">
-                    {formatPriceLabel(previewItem.promotional_price)}
+                    {formatItemPriceLabel(
+                      previewItem.promotional_price,
+                      previewItem.pricing_type,
+                    )}
                   </Text>
                 </>
               ) : (
@@ -4041,67 +4110,64 @@ export default function ItemsCatalog({
                   size="lg"
                   className="font-semibold text-[var(--app-text)]"
                 >
-                  {formatPriceLabel(previewItem.price)}
+                  {formatItemPriceLabel(
+                    previewItem.price,
+                    previewItem.pricing_type,
+                  )}
                 </Text>
               )}
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </AppModal>
 
-      {openQrModal && canManageItems ? (
-        <div
-          className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center"
-          onClick={() => setOpenQrModal(false)}
-        >
-          <div
-            className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:p-5"
-            onClick={(event) => event.stopPropagation()}
+      <AppModal
+        isOpen={openQrModal && canManageItems}
+        onClose={() => setOpenQrModal(false)}
+        panelClassName="max-h-[calc(100dvh-7rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[82dvh] sm:max-w-md sm:p-5"
+      >
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <Title as="h2" size="modal">
+            QR Code do cardápio
+          </Title>
+          <button
+            type="button"
+            onClick={() => setOpenQrModal(false)}
+            className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80"
+            aria-label="Fechar modal de QR Code"
           >
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <Title as="h2" size="modal">
-                QR Code do cardápio
-              </Title>
-              <button
-                type="button"
-                onClick={() => setOpenQrModal(false)}
-                className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80"
-                aria-label="Fechar modal de QR Code"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {publicMenuUrl ? (
-              <>
-                <div className="rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={qrCodeImageUrl}
-                    alt="QR Code do cardápio"
-                    className="mx-auto h-64 w-64 rounded-md border border-[var(--app-border)] bg-white p-2"
-                  />
-                </div>
-                <Text tone="muted" size="sm" className="mt-3 break-all">
-                  {publicMenuUrl}
-                </Text>
-
-                <button
-                  type="button"
-                  onClick={handlePrintQrCode}
-                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-3 py-2 text-sm font-semibold text-[var(--app-primary-contrast)]"
-                >
-                  <Printer className="h-4 w-4" /> Imprimir QR
-                </button>
-              </>
-            ) : (
-              <Text tone="muted" size="sm">
-                Não foi possível montar o link público do cardápio.
-              </Text>
-            )}
-          </div>
+            <X className="h-5 w-5" />
+          </button>
         </div>
-      ) : null}
+
+        {publicMenuUrl ? (
+          <>
+            <div className="rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={qrCodeImageUrl}
+                alt="QR Code do cardápio"
+                className="mx-auto h-64 w-64 rounded-md border border-[var(--app-border)] bg-white p-2"
+              />
+            </div>
+            <Text tone="muted" size="sm" className="mt-3 break-all">
+              {publicMenuUrl}
+            </Text>
+
+            <button
+              type="button"
+              onClick={handlePrintQrCode}
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-3 py-2 text-sm font-semibold text-[var(--app-primary-contrast)]"
+            >
+              <Printer className="h-4 w-4" /> Imprimir QR
+            </button>
+          </>
+        ) : (
+          <Text tone="muted" size="sm">
+            Não foi possível montar o link público do cardápio.
+          </Text>
+        )}
+      </AppModal>
 
       <ConfirmationModal
         isOpen={Boolean(itemPendingDelete)}
@@ -4140,191 +4206,208 @@ export default function ItemsCatalog({
         }}
       />
 
-      {openCreateCategory ? (
-        <div className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
-          <div className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <Title as="h2" size="modal">
-                Nova categoria
-              </Title>
-              <button
-                type="button"
-                disabled={isCreateCategoryBusy}
-                onClick={() => {
-                  setOpenCreateCategory(false);
-                  setNewCategoryName("");
-                  setNewCategoryImageFile(null);
-                  setNewCategoryPreviewImageUrl(null);
-                  setNewCategoryImageName("");
-                }}
-                className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Fechar modal"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      <AppModal
+        isOpen={openCreateCategory}
+        onClose={() => {
+          if (isCreateCategoryBusy) {
+            return;
+          }
 
-            <form className="space-y-3" onSubmit={handleCreateCategory}>
-              <FormLabel>
-                <span>Nome da categoria</span>
-                <FormInput
-                  value={newCategoryName}
-                  disabled={isCreateCategoryBusy}
-                  onChange={(event) => setNewCategoryName(event.target.value)}
-                />
-              </FormLabel>
+          setOpenCreateCategory(false);
+          setNewCategoryName("");
+          setNewCategoryImageFile(null);
+          setNewCategoryPreviewImageUrl(null);
+          setNewCategoryImageName("");
+        }}
+        panelClassName="max-h-[calc(100dvh-7rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[82dvh] sm:max-w-md sm:p-5"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <Title as="h2" size="modal">
+            Nova categoria
+          </Title>
+          <button
+            type="button"
+            disabled={isCreateCategoryBusy}
+            onClick={() => {
+              setOpenCreateCategory(false);
+              setNewCategoryName("");
+              setNewCategoryImageFile(null);
+              setNewCategoryPreviewImageUrl(null);
+              setNewCategoryImageName("");
+            }}
+            className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Fechar modal"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-              <FormLabel>
-                <span>Imagem da categoria (opcional)</span>
-                <FormInput
-                  ref={createCategoryFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  disabled={isCreateCategoryBusy || isUploadingImage}
-                  onChange={(event) =>
-                    void handleSelectCreateCategoryImage(
-                      event.target.files?.[0] ?? null,
-                    )
-                  }
-                  className="sr-only"
+        <form className="space-y-3" onSubmit={handleCreateCategory}>
+          <FormLabel>
+            <span>Nome da categoria</span>
+            <FormInput
+              value={newCategoryName}
+              disabled={isCreateCategoryBusy}
+              onChange={(event) => setNewCategoryName(event.target.value)}
+            />
+          </FormLabel>
+
+          <FormLabel>
+            <span>Imagem da categoria (opcional)</span>
+            <FormInput
+              ref={createCategoryFileInputRef}
+              type="file"
+              accept="image/*"
+              disabled={isCreateCategoryBusy || isUploadingImage}
+              onChange={(event) =>
+                void handleSelectCreateCategoryImage(
+                  event.target.files?.[0] ?? null,
+                )
+              }
+              className="sr-only"
+            />
+            <button
+              type="button"
+              disabled={isCreateCategoryBusy || isUploadingImage}
+              onClick={() => createCategoryFileInputRef.current?.click()}
+              className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-left text-sm text-[var(--app-text)] disabled:opacity-60"
+            >
+              <span className="block w-full truncate">
+                {newCategoryImageName || "Escolher imagem"}
+              </span>
+            </button>
+            {newCategoryPreviewImageUrl ? (
+              <Image
+                src={newCategoryPreviewImageUrl}
+                alt="Preview da imagem da categoria"
+                width={640}
+                height={192}
+                unoptimized
+                className="h-24 w-full rounded-md border border-[var(--app-border)] p-1"
+              />
+            ) : null}
+          </FormLabel>
+
+          <button
+            type="submit"
+            disabled={isCreateCategoryBusy || isUploadingImage}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:opacity-70"
+          >
+            {isCreateCategoryBusy || isUploadingImage ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : null}
+            {isUploadingImage
+              ? "Otimizando imagem..."
+              : isCreateCategoryBusy
+                ? "Salvando..."
+                : "Salvar categoria"}
+          </button>
+        </form>
+      </AppModal>
+
+      <AppModal
+        isOpen={Boolean(categoryDetailsTarget)}
+        onClose={() => {
+          if (Boolean(renamingCategory)) {
+            return;
+          }
+          closeCategoryDetailsModal();
+        }}
+        panelClassName="max-h-[calc(100dvh-7rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[82dvh] sm:max-w-md sm:p-5"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <Title as="h2" size="modal">
+            Editar categoria
+          </Title>
+          <button
+            type="button"
+            disabled={Boolean(renamingCategory)}
+            onClick={closeCategoryDetailsModal}
+            className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Fechar modal"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form className="space-y-3" onSubmit={handleSaveCategoryDetails}>
+          <FormLabel>
+            <span>Nome da categoria</span>
+            <FormInput
+              value={categoryDetailsName}
+              disabled={Boolean(renamingCategory)}
+              onChange={(event) => setCategoryDetailsName(event.target.value)}
+            />
+          </FormLabel>
+
+          <FormLabel>
+            <span>Imagem da categoria (opcional)</span>
+            <FormInput
+              ref={editCategoryFileInputRef}
+              type="file"
+              accept="image/*"
+              disabled={Boolean(renamingCategory) || isUploadingImage}
+              onChange={(event) =>
+                void handleSelectEditCategoryImage(
+                  event.target.files?.[0] ?? null,
+                )
+              }
+              className="sr-only"
+            />
+            <button
+              type="button"
+              disabled={Boolean(renamingCategory) || isUploadingImage}
+              onClick={() => editCategoryFileInputRef.current?.click()}
+              className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-left text-sm text-[var(--app-text)] disabled:opacity-60"
+            >
+              <span className="block w-full truncate">
+                {categoryDetailsImageName || "Escolher imagem"}
+              </span>
+            </button>
+
+            {categoryDetailsPreviewImageUrl ? (
+              <>
+                <Image
+                  src={categoryDetailsPreviewImageUrl}
+                  alt="Preview da imagem da categoria"
+                  width={640}
+                  height={192}
+                  unoptimized
+                  className="h-24 w-full rounded-md border border-[var(--app-border)] p-1"
                 />
                 <button
                   type="button"
-                  disabled={isCreateCategoryBusy || isUploadingImage}
-                  onClick={() => createCategoryFileInputRef.current?.click()}
-                  className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-left text-sm text-[var(--app-text)] disabled:opacity-60"
-                >
-                  {newCategoryImageName || "Escolher imagem"}
-                </button>
-                {newCategoryPreviewImageUrl ? (
-                  <Image
-                    src={newCategoryPreviewImageUrl}
-                    alt="Preview da imagem da categoria"
-                    width={640}
-                    height={192}
-                    unoptimized
-                    className="h-24 w-full rounded-md border border-[var(--app-border)] p-1"
-                  />
-                ) : null}
-              </FormLabel>
-
-              <button
-                type="submit"
-                disabled={isCreateCategoryBusy || isUploadingImage}
-                className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:opacity-70"
-              >
-                {isCreateCategoryBusy || isUploadingImage ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : null}
-                {isUploadingImage
-                  ? "Otimizando imagem..."
-                  : isCreateCategoryBusy
-                    ? "Salvando..."
-                    : "Salvar categoria"}
-              </button>
-            </form>
-          </div>
-        </div>
-      ) : null}
-
-      {categoryDetailsTarget ? (
-        <div className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
-          <div className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <Title as="h2" size="modal">
-                Editar categoria
-              </Title>
-              <button
-                type="button"
-                disabled={Boolean(renamingCategory)}
-                onClick={closeCategoryDetailsModal}
-                className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Fechar modal"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form className="space-y-3" onSubmit={handleSaveCategoryDetails}>
-              <FormLabel>
-                <span>Nome da categoria</span>
-                <FormInput
-                  value={categoryDetailsName}
-                  disabled={Boolean(renamingCategory)}
-                  onChange={(event) =>
-                    setCategoryDetailsName(event.target.value)
-                  }
-                />
-              </FormLabel>
-
-              <FormLabel>
-                <span>Imagem da categoria (opcional)</span>
-                <FormInput
-                  ref={editCategoryFileInputRef}
-                  type="file"
-                  accept="image/*"
                   disabled={Boolean(renamingCategory) || isUploadingImage}
-                  onChange={(event) =>
-                    void handleSelectEditCategoryImage(
-                      event.target.files?.[0] ?? null,
-                    )
-                  }
-                  className="sr-only"
-                />
-                <button
-                  type="button"
-                  disabled={Boolean(renamingCategory) || isUploadingImage}
-                  onClick={() => editCategoryFileInputRef.current?.click()}
-                  className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-left text-sm text-[var(--app-text)] disabled:opacity-60"
+                  onClick={() => {
+                    setCategoryDetailsImageFile(null);
+                    setCategoryDetailsImageName("");
+                    setCategoryDetailsPreviewImageUrl(null);
+                    setCategoryDetailsRemoveImage(true);
+                  }}
+                  className="w-full rounded-md border border-[var(--app-border)] bg-white px-3 py-2 text-sm text-[var(--app-text)] disabled:opacity-60"
                 >
-                  {categoryDetailsImageName || "Escolher imagem"}
+                  Remover imagem
                 </button>
+              </>
+            ) : null}
+          </FormLabel>
 
-                {categoryDetailsPreviewImageUrl ? (
-                  <>
-                    <Image
-                      src={categoryDetailsPreviewImageUrl}
-                      alt="Preview da imagem da categoria"
-                      width={640}
-                      height={192}
-                      unoptimized
-                      className="h-24 w-full rounded-md border border-[var(--app-border)] p-1"
-                    />
-                    <button
-                      type="button"
-                      disabled={Boolean(renamingCategory) || isUploadingImage}
-                      onClick={() => {
-                        setCategoryDetailsImageFile(null);
-                        setCategoryDetailsImageName("");
-                        setCategoryDetailsPreviewImageUrl(null);
-                        setCategoryDetailsRemoveImage(true);
-                      }}
-                      className="w-full rounded-md border border-[var(--app-border)] bg-white px-3 py-2 text-sm text-[var(--app-text)] disabled:opacity-60"
-                    >
-                      Remover imagem
-                    </button>
-                  </>
-                ) : null}
-              </FormLabel>
-
-              <button
-                type="submit"
-                disabled={Boolean(renamingCategory) || isUploadingImage}
-                className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:opacity-70"
-              >
-                {Boolean(renamingCategory) || isUploadingImage ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : null}
-                {isUploadingImage
-                  ? "Otimizando imagem..."
-                  : renamingCategory
-                    ? "Salvando..."
-                    : "Salvar categoria"}
-              </button>
-            </form>
-          </div>
-        </div>
-      ) : null}
+          <button
+            type="submit"
+            disabled={Boolean(renamingCategory) || isUploadingImage}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:opacity-70"
+          >
+            {Boolean(renamingCategory) || isUploadingImage ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : null}
+            {isUploadingImage
+              ? "Otimizando imagem..."
+              : renamingCategory
+                ? "Salvando..."
+                : "Salvar categoria"}
+          </button>
+        </form>
+      </AppModal>
     </section>
   );
 }

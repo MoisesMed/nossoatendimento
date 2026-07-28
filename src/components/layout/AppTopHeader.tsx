@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import AppNavigation from "@/components/layout/AppNavigation";
+import ProfileDropdown from "@/components/layout/ProfileDropdown";
 import TenantLogoUploader from "@/components/layout/TenantLogoUploader";
 
 type AppTopHeaderProps = {
@@ -41,7 +41,7 @@ export default function AppTopHeader({
 
   return (
     <>
-      <header className="sticky top-0 z-30 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 backdrop-blur">
+      <header className="sticky top-0 z-50 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 backdrop-blur">
         <div className="mx-auto w-full max-w-[1280px] px-4 py-3 sm:px-6">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-8">
@@ -67,36 +67,13 @@ export default function AppTopHeader({
               </div>
             </div>
 
-            <details className="group relative">
-              <summary className="list-none rounded-full ring-offset-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-border)]">
-                <div className="flex items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--app-surface-muted)] text-xs font-bold text-[var(--app-text)]">
-                    {initials}
-                  </div>
-                  <ChevronDown className="h-4 w-4 text-[var(--app-muted)]" />
-                </div>
-              </summary>
-
-              <div className="absolute right-0 mt-2 w-56 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-2 shadow-xl">
-                <div className="mb-2 border-b border-[var(--app-border)] px-2 pb-2">
-                  <p className="text-sm font-semibold text-[var(--app-text)]">
-                    {fullName}
-                  </p>
-                  <p className="truncate text-[12px] text-[var(--app-muted)]">
-                    {userEmail}
-                  </p>
-                </div>
-
-                <form action={signOut}>
-                  <button
-                    type="submit"
-                    className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--app-muted)] transition hover:opacity-80"
-                  >
-                    Sair
-                  </button>
-                </form>
-              </div>
-            </details>
+            <ProfileDropdown
+              fullName={fullName}
+              userEmail={userEmail}
+              initials={initials}
+              userRole={userRole}
+              signOutAction={signOut}
+            />
           </div>
         </div>
       </header>
