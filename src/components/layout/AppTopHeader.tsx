@@ -3,11 +3,13 @@ import { ChevronDown } from "lucide-react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import AppNavigation from "@/components/layout/AppNavigation";
+import TenantLogoUploader from "@/components/layout/TenantLogoUploader";
 
 type AppTopHeaderProps = {
   fullName: string;
   userEmail: string;
   tenantName: string;
+  tenantLogoUrl: string | null;
   userRole: "DONO" | "ATENDENTE" | "USUARIO";
 };
 
@@ -24,6 +26,7 @@ export default function AppTopHeader({
   fullName,
   userEmail,
   tenantName,
+  tenantLogoUrl,
   userRole,
 }: AppTopHeaderProps) {
   const initials = getInitials(fullName) || "U";
@@ -42,19 +45,22 @@ export default function AppTopHeader({
         <div className="mx-auto w-full max-w-[1280px] px-4 py-3 sm:px-6">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-8">
-              <Link href="/mesas" className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-surface-muted)] text-sm font-semibold text-[var(--app-text)]">
-                  MG
-                </div>
-                <div>
+              <div className="flex items-center gap-3">
+                <TenantLogoUploader
+                  tenantName={tenantName}
+                  tenantLogoUrl={tenantLogoUrl}
+                  canEdit={userRole === "DONO"}
+                />
+
+                <Link href="/mesas">
                   <p className="text-[15px] font-semibold leading-tight text-[var(--app-text)]">
                     {tenantName}
                   </p>
                   <p className="text-[12px] font-normal text-[var(--app-muted)]">
                     Painel de atendimento
                   </p>
-                </div>
-              </Link>
+                </Link>
+              </div>
 
               <div className="hidden md:flex">
                 <AppNavigation userRole={userRole} />
@@ -80,13 +86,6 @@ export default function AppTopHeader({
                     {userEmail}
                   </p>
                 </div>
-
-                <Link
-                  href="/perfil"
-                  className="block rounded-lg px-3 py-2 text-sm text-[var(--app-text)] transition hover:opacity-80"
-                >
-                  Perfil
-                </Link>
 
                 <form action={signOut}>
                   <button

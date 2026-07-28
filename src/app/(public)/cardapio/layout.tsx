@@ -4,7 +4,8 @@ import { requireTenantContext } from "@/lib/tenantContext";
 import { resolveTenantTheme, themeToCssVars } from "@/lib/theme";
 import { createClient } from "@/utils/supabase/server";
 
-const PUBLIC_TENANT_SLUG = "manja";
+const PUBLIC_TENANT_SLUG = "labavetteresto";
+const LOGO_BUCKET = "restaurant-logos";
 
 export default async function CardapioLayout({
   children,
@@ -36,6 +37,11 @@ export default async function CardapioLayout({
           fullName={fullName}
           userEmail={userEmail}
           tenantName={tenant.name}
+          tenantLogoUrl={
+            tenant.logo_path
+              ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${LOGO_BUCKET}/${tenant.logo_path}`
+              : null
+          }
           userRole={userRole}
         />
 
@@ -46,8 +52,9 @@ export default async function CardapioLayout({
     );
   }
 
-  let tenantName = "MANJA";
+  let tenantName = "Lá Bavette Restô";
   let tenantTheme: unknown = null;
+  let tenantLogoUrl: string | null = null;
 
   const { data: publicTenant } = await supabase.rpc("get_public_tenant", {
     p_tenant_slug: PUBLIC_TENANT_SLUG,
@@ -55,12 +62,19 @@ export default async function CardapioLayout({
 
   const typedTenant =
     Array.isArray(publicTenant) && publicTenant.length > 0
-      ? (publicTenant[0] as { name: string; theme: unknown })
+      ? (publicTenant[0] as {
+          name: string;
+          theme: unknown;
+          logo_path: string | null;
+        })
       : null;
 
   if (typedTenant) {
     tenantName = typedTenant.name;
     tenantTheme = typedTenant.theme;
+    tenantLogoUrl = typedTenant.logo_path
+      ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${LOGO_BUCKET}/${typedTenant.logo_path}`
+      : null;
   }
 
   const resolvedTenantTheme = resolveTenantTheme(tenantTheme);
@@ -70,7 +84,11 @@ export default async function CardapioLayout({
       className="min-h-screen bg-[var(--app-bg)]"
       style={themeToCssVars(resolvedTenantTheme)}
     >
-      <PublicTopHeader tenantName={tenantName} maxWidthClass="max-w-[800px]" />
+      <PublicTopHeader
+        tenantName={tenantName}
+        tenantLogoUrl={tenantLogoUrl}
+        maxWidthClass="max-w-[800px]"
+      />
 
       <div className="mx-auto flex min-h-screen w-full max-w-[800px] flex-col pb-28">
         {children}

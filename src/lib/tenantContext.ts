@@ -6,6 +6,7 @@ type TenantRow = {
   slug: string;
   name: string;
   theme: unknown;
+  logo_path: string | null;
 };
 
 type MembershipRow = {
@@ -40,11 +41,11 @@ export async function requireTenantContext() {
   const preferredSlug =
     typeof user.user_metadata?.tenant_slug === "string"
       ? user.user_metadata.tenant_slug.trim().toLowerCase()
-      : "manja";
+      : "labavetteresto";
 
   const { data: preferredTenant } = await supabase
     .from("tenants")
-    .select("id, slug, name, theme")
+    .select("id, slug, name, theme, logo_path")
     .eq("slug", preferredSlug)
     .maybeSingle();
 
@@ -79,19 +80,19 @@ export async function requireTenantContext() {
   }
 
   if (!typedMembership) {
-    redirect("/");
+    redirect("/cardapio");
   }
 
   const { data: fallbackTenant } = await supabase
     .from("tenants")
-    .select("id, slug, name, theme")
+    .select("id, slug, name, theme, logo_path")
     .eq("id", typedMembership.tenant_id)
     .single();
 
   const typedFallbackTenant = fallbackTenant as TenantRow | null;
 
   if (!typedFallbackTenant) {
-    redirect("/");
+    redirect("/cardapio");
   }
 
   return {

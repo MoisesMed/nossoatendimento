@@ -3,13 +3,14 @@ create or replace function public.get_public_tenant(
 )
 returns table (
   name text,
-  theme jsonb
+  theme jsonb,
+  logo_path text
 )
 language sql
 security definer
 set search_path = public
 as $$
-  select t.name, t.theme
+  select t.name, t.theme, t.logo_path
   from public.tenants t
   where t.slug = lower(trim(p_tenant_slug))
   limit 1;

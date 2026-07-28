@@ -26,8 +26,8 @@ async function resolveTenantId() {
 
   const preferredSlug =
     typeof user.user_metadata?.tenant_slug === "string"
-      ? user.user_metadata.tenant_slug
-      : "manja";
+      ? user.user_metadata.tenant_slug.trim().toLowerCase()
+      : "labavetteresto";
 
   const { data: membershipsBySlug, error: membershipError } = await supabase
     .from("memberships")

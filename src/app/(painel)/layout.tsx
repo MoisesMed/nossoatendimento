@@ -2,6 +2,8 @@ import AppTopHeader from "@/components/layout/AppTopHeader";
 import { requireTenantContext } from "@/lib/tenantContext";
 import { resolveTenantTheme, themeToCssVars } from "@/lib/theme";
 
+const LOGO_BUCKET = "restaurant-logos";
+
 export default async function PainelLayout({
   children,
 }: Readonly<{
@@ -16,6 +18,9 @@ export default async function PainelLayout({
 
   const userEmail = user.email ?? "sem-email";
   const tenantTheme = resolveTenantTheme(tenant.theme);
+  const tenantLogoUrl = tenant.logo_path
+    ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${LOGO_BUCKET}/${tenant.logo_path}`
+    : null;
 
   return (
     <main
@@ -26,6 +31,7 @@ export default async function PainelLayout({
         fullName={fullName}
         userEmail={userEmail}
         tenantName={tenant.name}
+        tenantLogoUrl={tenantLogoUrl}
         userRole={userRole}
       />
       {children}

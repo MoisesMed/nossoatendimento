@@ -33,8 +33,9 @@ type CategoryImageData = {
   imageUrl: string | null;
 };
 
-const PUBLIC_TENANT_SLUG = "manja";
+const PUBLIC_TENANT_SLUG = "labavetteresto";
 const STORAGE_BUCKET = "menu-item-images";
+const LOGO_BUCKET = "restaurant-logos";
 
 async function resolveStorageUrl(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -63,12 +64,18 @@ export default async function CardapioPage() {
   let initialAdditionals: MenuAdditional[] = [];
   let initialCategories: string[] = [];
   let initialCategoryImages: Record<string, CategoryImageData> = {};
+  let tenantDisplayName = "Lá Bavette Restô";
+  let tenantLogoUrl: string | null = null;
 
   if (isAuthenticated) {
     const tenantContext = await requireTenantContext();
     const { supabase: authSupabase, tenant } = tenantContext;
 
     userRole = tenantContext.userRole;
+    tenantDisplayName = tenant.name;
+    tenantLogoUrl = tenant.logo_path
+      ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${LOGO_BUCKET}/${tenant.logo_path}`
+      : null;
 
     const { data: itemsData } = await authSupabase
       .from("menu_items")
@@ -176,6 +183,25 @@ export default async function CardapioPage() {
       new Set([...fromCategories, ...missingFromItems]),
     );
   } else {
+    const { data: publicTenant } = await supabase.rpc("get_public_tenant", {
+      p_tenant_slug: PUBLIC_TENANT_SLUG,
+    });
+
+    const typedTenant =
+      Array.isArray(publicTenant) && publicTenant.length > 0
+        ? (publicTenant[0] as {
+            name: string;
+            logo_path: string | null;
+          })
+        : null;
+
+    if (typedTenant) {
+      tenantDisplayName = typedTenant.name;
+      tenantLogoUrl = typedTenant.logo_path
+        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${LOGO_BUCKET}/${typedTenant.logo_path}`
+        : null;
+    }
+
     const { data: menuRows } = await supabase.rpc("get_public_menu", {
       p_tenant_slug: PUBLIC_TENANT_SLUG,
     });
@@ -320,6 +346,8 @@ export default async function CardapioPage() {
       initialCategories={initialCategories}
       initialCategoryImages={initialCategoryImages}
       userRole={userRole}
+      tenantDisplayName={tenantDisplayName}
+      tenantLogoUrl={tenantLogoUrl}
     />
   );
 }

@@ -5,11 +5,13 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   ChevronDown,
-  ChevronUp,
   GripVertical,
   Loader2,
+  MoreVertical,
   Pencil,
   Plus,
+  QrCode,
+  Printer,
   Trash2,
   X,
 } from "lucide-react";
@@ -158,12 +160,16 @@ export default function ItemsCatalog({
   initialCategories,
   initialCategoryImages,
   userRole,
+  tenantDisplayName,
+  tenantLogoUrl,
 }: {
   initialItems: MenuItem[];
   initialAdditionals: MenuAdditional[];
   initialCategories: string[];
   initialCategoryImages: Record<string, CategoryImageData>;
   userRole: "DONO" | "ATENDENTE" | "USUARIO";
+  tenantDisplayName?: string;
+  tenantLogoUrl?: string | null;
 }) {
   const normalizedInitialCategories = Array.from(
     new Set([
@@ -225,7 +231,24 @@ export default function ItemsCatalog({
   const [activeCategoryFilter, setActiveCategoryFilter] =
     useState<string>("ALL");
   const [itemSearchTerm, setItemSearchTerm] = useState("");
+  const [isCardapioMenuOpen, setIsCardapioMenuOpen] = useState(false);
+  const [isTopActionsMenuOpen, setIsTopActionsMenuOpen] = useState(false);
+  const [openCategoryActionsMenu, setOpenCategoryActionsMenu] = useState<
+    string | null
+  >(null);
+  const [cardapioMenuAlign, setCardapioMenuAlign] = useState<
+    "open-left" | "open-right"
+  >("open-left");
+  const [topActionsMenuAlign, setTopActionsMenuAlign] = useState<
+    "open-left" | "open-right"
+  >("open-left");
+  const [categoryActionsMenuAlign, setCategoryActionsMenuAlign] = useState<
+    "open-left" | "open-right"
+  >("open-left");
   const [openAdditionalsModal, setOpenAdditionalsModal] = useState(false);
+  const [openQrModal, setOpenQrModal] = useState(false);
+  const [publicMenuUrl, setPublicMenuUrl] = useState("");
+  const [previewItem, setPreviewItem] = useState<MenuItem | null>(null);
   const [openCreateAdditional, setOpenCreateAdditional] = useState(false);
   const [editingAdditionalId, setEditingAdditionalId] = useState<string | null>(
     null,
@@ -268,6 +291,9 @@ export default function ItemsCatalog({
   >(null);
   const transparentDragImageRef = useRef<HTMLImageElement | null>(null);
   const categorySectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  const cardapioMenuRootRef = useRef<HTMLDivElement | null>(null);
+  const topActionsMenuRootRef = useRef<HTMLDivElement | null>(null);
+  const categoryActionsMenuRootRef = useRef<HTMLDivElement | null>(null);
   const reorderDebounceTimeoutRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
@@ -938,6 +964,151 @@ export default function ItemsCatalog({
     }
   }, [editingCategory]);
 
+  useEffect(() => {
+    if (!isCardapioMenuOpen && !isTopActionsMenuOpen && !openCategoryActionsMenu) {
+      return;
+    }
+
+    const handleOutsideMenus = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as HTMLElement | null;
+
+      if (
+        target?.closest('[data-items-cardapio-menu="true"]') ||
+        target?.closest('[data-items-top-actions-menu="true"]') ||
+        target?.closest('[data-items-category-actions-menu="true"]')
+      ) {
+        return;
+      }
+
+      setIsCardapioMenuOpen(false);
+      setIsTopActionsMenuOpen(false);
+      setOpenCategoryActionsMenu(null);
+    };
+
+    const handleScrollCloseMenus = () => {
+      setIsCardapioMenuOpen(false);
+      setIsTopActionsMenuOpen(false);
+      setOpenCategoryActionsMenu(null);
+    };
+
+    document.addEventListener("mousedown", handleOutsideMenus);
+    document.addEventListener("touchstart", handleOutsideMenus, {
+      passive: true,
+    });
+    window.addEventListener("scroll", handleScrollCloseMenus, {
+      capture: true,
+      passive: true,
+    });
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideMenus);
+      document.removeEventListener("touchstart", handleOutsideMenus);
+      window.removeEventListener("scroll", handleScrollCloseMenus, true);
+    };
+  }, [isCardapioMenuOpen, isTopActionsMenuOpen, openCategoryActionsMenu]);
+
+  useEffect(() => {
+    if (!isCardapioMenuOpen) {
+      return;
+    }
+
+    const updateCardapioMenuAlign = () => {
+      const root = cardapioMenuRootRef.current;
+
+      if (!root) {
+        return;
+      }
+
+      const rootRect = root.getBoundingClientRect();
+      const menuWidth = 208;
+      const spacing = 12;
+      const availableToRight = window.innerWidth - rootRect.left - spacing;
+      const availableToLeft = rootRect.right - spacing;
+
+      if (availableToRight >= menuWidth || availableToRight > availableToLeft) {
+        setCardapioMenuAlign("open-right");
+        return;
+      }
+
+      setCardapioMenuAlign("open-left");
+    };
+
+    updateCardapioMenuAlign();
+    window.addEventListener("resize", updateCardapioMenuAlign);
+
+    return () => {
+      window.removeEventListener("resize", updateCardapioMenuAlign);
+    };
+  }, [isCardapioMenuOpen]);
+
+  useEffect(() => {
+    if (!isTopActionsMenuOpen) {
+      return;
+    }
+
+    const updateTopActionsMenuAlign = () => {
+      const root = topActionsMenuRootRef.current;
+
+      if (!root) {
+        return;
+      }
+
+      const rootRect = root.getBoundingClientRect();
+      const menuWidth = 208;
+      const spacing = 12;
+      const availableToRight = window.innerWidth - rootRect.left - spacing;
+      const availableToLeft = rootRect.right - spacing;
+
+      if (availableToRight >= menuWidth || availableToRight > availableToLeft) {
+        setTopActionsMenuAlign("open-right");
+        return;
+      }
+
+      setTopActionsMenuAlign("open-left");
+    };
+
+    updateTopActionsMenuAlign();
+    window.addEventListener("resize", updateTopActionsMenuAlign);
+
+    return () => {
+      window.removeEventListener("resize", updateTopActionsMenuAlign);
+    };
+  }, [isTopActionsMenuOpen]);
+
+  useEffect(() => {
+    if (!openCategoryActionsMenu) {
+      return;
+    }
+
+    const updateCategoryActionsMenuAlign = () => {
+      const root = categoryActionsMenuRootRef.current;
+
+      if (!root) {
+        return;
+      }
+
+      const rootRect = root.getBoundingClientRect();
+      const menuWidth = 208;
+      const spacing = 12;
+      const availableToRight = window.innerWidth - rootRect.left - spacing;
+      const availableToLeft = rootRect.right - spacing;
+
+      if (availableToRight >= menuWidth || availableToRight > availableToLeft) {
+        setCategoryActionsMenuAlign("open-right");
+        return;
+      }
+
+      setCategoryActionsMenuAlign("open-left");
+    };
+
+    updateCategoryActionsMenuAlign();
+    window.addEventListener("resize", updateCategoryActionsMenuAlign);
+
+    return () => {
+      window.removeEventListener("resize", updateCategoryActionsMenuAlign);
+    };
+  }, [openCategoryActionsMenu]);
+
   const startEditingCategory = (category: string) => {
     if (!canManageItems || isAnyBusy) {
       return;
@@ -1083,6 +1254,18 @@ export default function ItemsCatalog({
     setPreviewImageUrl(null);
     setSelectedImageName("");
     setOpenCreate(true);
+  };
+
+  const handleOpenCreateCategory = () => {
+    if (!canManageItems || isAnyBusy) {
+      return;
+    }
+
+    setNewCategoryName("");
+    setNewCategoryImageFile(null);
+    setNewCategoryPreviewImageUrl(null);
+    setNewCategoryImageName("");
+    setOpenCreateCategory(true);
   };
 
   const handleOpenCreateInCategory = (category: string) => {
@@ -1833,11 +2016,16 @@ export default function ItemsCatalog({
     return acc;
   }, {});
 
-  const displayedCategories = normalizedSearchTerm
+  const displayedCategoriesBase = normalizedSearchTerm
     ? categoriesToRender.filter(
         (category) => (filteredGroupedByCategory[category] ?? []).length > 0,
       )
     : categoriesToRender;
+  const displayedCategories = canManageItems
+    ? displayedCategoriesBase
+    : displayedCategoriesBase.filter(
+        (category) => (filteredGroupedByCategory[category] ?? []).length > 0,
+      );
 
   const hasEditItemChanges = (() => {
     if (!editingItem) {
@@ -2014,6 +2202,312 @@ export default function ItemsCatalog({
 
     return a.title.localeCompare(b.title);
   });
+  const previewItemAdditionals = previewItem
+    ? orderedAdditionals.filter(
+        (additional) => additional.menu_item_id === previewItem.id,
+      )
+    : [];
+  const qrCodeImageUrl = publicMenuUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(publicMenuUrl)}`
+    : "";
+
+  const handleOpenQrModal = () => {
+    if (!canManageItems) {
+      return;
+    }
+
+    const nextPublicMenuUrl = `${window.location.origin}/cardapio`;
+    setPublicMenuUrl(nextPublicMenuUrl);
+    setOpenQrModal(true);
+  };
+
+  const handlePrintQrCode = () => {
+    if (!publicMenuUrl) {
+      toast.error("Não foi possível gerar o link do cardápio.");
+      return;
+    }
+
+    const printWindow = window.open(
+      "",
+      "_blank",
+      "noopener,noreferrer,width=480,height=720",
+    );
+
+    if (!printWindow) {
+      toast.error("Não foi possível abrir a janela de impressão.");
+      return;
+    }
+
+    const html = `
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>QR Code do Cardápio</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            .container { text-align: center; }
+            .title { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+            .subtitle { font-size: 13px; color: #4b5563; margin-bottom: 16px; }
+            .qr { width: 260px; height: 260px; border: 1px solid #e5e7eb; padding: 8px; border-radius: 8px; }
+            .url { margin-top: 14px; font-size: 12px; word-break: break-all; color: #374151; }
+          </style>
+        </head>
+        <body>
+          <main class="container">
+            <div class="title">Cardápio Digital</div>
+            <div class="subtitle">Escaneie para abrir o cardápio</div>
+            <img class="qr" src="${qrCodeImageUrl}" alt="QR Code do cardápio" />
+            <div class="url">${publicMenuUrl}</div>
+          </main>
+          <script>
+            window.addEventListener('load', () => {
+              window.print();
+            });
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
+  const handlePrintSimpleMenu = () => {
+    const printWindow = window.open("about:blank", "_blank", "width=900,height=1200");
+
+    if (!printWindow) {
+      toast.error("Não foi possível abrir a janela de impressão.");
+      return;
+    }
+
+    try {
+      const printableCategories = categoriesToRender
+        .map((category) => {
+          const categoryItems = groupedByCategory[category] ?? [];
+          const itemsForPrint = categoryItems
+            .map((item) => {
+              const basePrice = Number(item.price);
+              const promoPrice =
+                item.promotional_price === null
+                  ? null
+                  : Number(item.promotional_price);
+              const resolvedPrice =
+                promoPrice !== null &&
+                Number.isFinite(promoPrice) &&
+                Number.isFinite(basePrice) &&
+                promoPrice < basePrice
+                  ? promoPrice
+                  : basePrice;
+
+              if (!Number.isFinite(resolvedPrice)) {
+                return null;
+              }
+
+              return {
+                code: Number(item.code) || 0,
+                name: typeof item.name === "string" ? item.name : "Sem nome",
+                description:
+                  typeof item.description === "string"
+                    ? item.description.trim()
+                    : "",
+                price: resolvedPrice,
+              };
+            })
+            .filter(
+              (
+                item,
+              ): item is {
+                code: number;
+                name: string;
+                description: string;
+                price: number;
+              } => item !== null,
+            );
+
+          return {
+            category,
+            items: itemsForPrint,
+          };
+        })
+        .filter((category) => category.items.length > 0);
+
+      if (printableCategories.length === 0) {
+        printWindow.close();
+        toast.error("Não há itens válidos para imprimir no cardápio.");
+        return;
+      }
+
+      const escapeHtml = (value: string) =>
+        value
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+
+      const currencyFormatter = new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+      });
+      const formatCurrency = (value: number) => currencyFormatter.format(value);
+      const resolvedRestaurantName =
+        tenantDisplayName?.trim() || "Lá Bavette Restô";
+      const resolvedLogoUrl = tenantLogoUrl?.trim() || "";
+
+      const midpoint = Math.ceil(printableCategories.length / 2);
+      const leftColumn = printableCategories.slice(0, midpoint);
+      const rightColumn = printableCategories.slice(midpoint);
+
+      const renderCategory = (category: {
+        category: string;
+        items: Array<{
+          code: number;
+          name: string;
+          description: string;
+          price: number;
+        }>;
+      }) => {
+        const itemsHtml = category.items
+          .map(
+            (item) => `
+              <li class="item-row">
+                <div class="item-main-row">
+                  <span class="item-name">${item.code} - ${escapeHtml(item.name)}</span>
+                  <span class="item-price">${formatCurrency(item.price)}</span>
+                </div>
+                ${item.description ? `<p class="item-description">${escapeHtml(item.description)}</p>` : ""}
+              </li>
+            `,
+          )
+          .join("");
+
+        return `
+          <section class="category-block">
+            <h2 class="category-title">${escapeHtml(category.category)}</h2>
+            <ul class="item-list">${itemsHtml}</ul>
+          </section>
+        `;
+      };
+
+      const html = `
+        <!doctype html>
+        <html lang="pt-BR">
+          <head>
+            <meta charset="utf-8" />
+            <title>Cardápio</title>
+            <style>
+              * { box-sizing: border-box; }
+              body {
+                margin: 14mm;
+                font-family: Arial, sans-serif;
+                color: #111827;
+                font-size: 11px;
+                line-height: 1.35;
+              }
+              .header {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 8mm;
+                border-bottom: 1px solid #d1d5db;
+                padding-bottom: 4mm;
+              }
+              .brand-logo {
+                width: 48px;
+                height: 48px;
+                border-radius: 999px;
+                border: 1px solid #e5e7eb;
+                object-fit: cover;
+                flex: 0 0 auto;
+              }
+              .brand-name {
+                margin: 0;
+                font-size: 18px;
+                font-weight: 700;
+                letter-spacing: 0.2px;
+              }
+              .columns {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10mm;
+                align-items: start;
+              }
+              .category-block {
+                margin-bottom: 6mm;
+                break-inside: avoid;
+              }
+              .category-title {
+                margin: 0 0 2mm;
+                font-size: 13px;
+                font-weight: 700;
+                border-bottom: 1px solid #d1d5db;
+                padding-bottom: 1.5mm;
+                text-transform: uppercase;
+                letter-spacing: 0.2px;
+              }
+              .item-list {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+              }
+              .item-row {
+                display: block;
+                padding: 1mm 0;
+                border-bottom: 1px dashed #e5e7eb;
+              }
+              .item-main-row {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 8px;
+              }
+              .item-name {
+                min-width: 0;
+                flex: 1;
+              }
+              .item-price {
+                white-space: nowrap;
+                font-weight: 700;
+              }
+              .item-description {
+                margin: 1.2mm 0 0;
+                color: #4b5563;
+                font-size: 10px;
+                line-height: 1.35;
+              }
+              @media print {
+                body { margin: 10mm; }
+              }
+            </style>
+          </head>
+          <body>
+            <header class="header">
+              ${resolvedLogoUrl ? `<img class="brand-logo" src="${escapeHtml(resolvedLogoUrl)}" alt="Logo do restaurante" />` : ""}
+              <h1 class="brand-name">${escapeHtml(resolvedRestaurantName)}</h1>
+            </header>
+            <main class="columns">
+              <div>${leftColumn.map(renderCategory).join("")}</div>
+              <div>${rightColumn.map(renderCategory).join("")}</div>
+            </main>
+            <script>
+              window.addEventListener('load', () => {
+                window.print();
+              });
+            </script>
+          </body>
+        </html>
+      `;
+
+      printWindow.document.open();
+      printWindow.document.write(html);
+      printWindow.document.close();
+    } catch {
+      printWindow.close();
+      toast.error("Não foi possível gerar o cardápio para impressão.");
+    }
+  };
 
   return (
     <section className="w-full px-4 pb-28 pt-4 sm:px-6">
@@ -2062,39 +2556,124 @@ export default function ItemsCatalog({
         </div>
       </div>
 
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => setOpenAdditionalsModal(true)}
-          className="inline-flex items-center gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--app-text)]"
-        >
-          Ver adicionais
-        </button>
+      <div className="mb-4 flex items-center justify-end gap-2">
         {canManageItems ? (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={isAnyBusy}
-              onClick={() => {
-                setNewCategoryName("");
-                setNewCategoryImageFile(null);
-                setNewCategoryPreviewImageUrl(null);
-                setNewCategoryImageName("");
-                setOpenCreateCategory(true);
-              }}
-              className="inline-flex items-center gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+          <>
+            <div
+              ref={cardapioMenuRootRef}
+              data-items-cardapio-menu="true"
+              className="relative"
             >
-              <Plus className="h-4 w-4" /> Nova categoria
-            </button>
-            <button
-              type="button"
-              disabled={isAnyBusy}
-              onClick={handleOpenCreate}
-              className="inline-flex items-center gap-2 rounded-md bg-[var(--app-primary)] px-3 py-2 text-sm font-semibold text-[var(--app-primary-contrast)] disabled:cursor-not-allowed disabled:opacity-60"
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenCategoryActionsMenu(null);
+                  setIsTopActionsMenuOpen(false);
+                  setIsCardapioMenuOpen((current) => !current);
+                }}
+                className="inline-flex items-center gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] transition hover:opacity-90"
+                aria-label="Abrir menu do cardápio"
+              >
+                Cardápio
+                <ChevronDown className="h-4 w-4" />
+              </button>
+
+              {isCardapioMenuOpen ? (
+                <div
+                  className={[
+                    "absolute z-30 mt-1 w-52 max-w-[calc(100vw-1rem)] rounded-md border border-[var(--app-border)] bg-white p-1 shadow-lg",
+                    cardapioMenuAlign === "open-right" ? "left-0" : "right-0",
+                  ].join(" ")}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCardapioMenuOpen(false);
+                      handleOpenQrModal();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)]"
+                  >
+                    <QrCode className="h-4 w-4" /> QR Code
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCardapioMenuOpen(false);
+                      handlePrintSimpleMenu();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)]"
+                  >
+                    <Printer className="h-4 w-4" /> Imprimir cardápio
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <div
+              ref={topActionsMenuRootRef}
+              data-items-top-actions-menu="true"
+              className="relative"
             >
-              <Plus className="h-4 w-4" /> Novo item
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCardapioMenuOpen(false);
+                  setOpenCategoryActionsMenu(null);
+                  setIsTopActionsMenuOpen((current) => !current);
+                }}
+                className="inline-flex items-center gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] transition hover:opacity-90"
+                aria-label="Abrir menu de + ITEM"
+              >
+                + ITEM
+                <ChevronDown className="h-4 w-4" />
+              </button>
+
+              {isTopActionsMenuOpen ? (
+                <div
+                  className={[
+                    "absolute z-30 mt-1 w-52 max-w-[calc(100vw-1rem)] rounded-md border border-[var(--app-border)] bg-white p-1 shadow-lg",
+                    topActionsMenuAlign === "open-right" ? "left-0" : "right-0",
+                  ].join(" ")}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsTopActionsMenuOpen(false);
+                      setOpenAdditionalsModal(true);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)]"
+                  >
+                    Ver adicionais
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isAnyBusy}
+                    onClick={() => {
+                      setIsTopActionsMenuOpen(false);
+                      handleOpenCreateCategory();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" /> Nova categoria
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isAnyBusy}
+                    onClick={() => {
+                      setIsTopActionsMenuOpen(false);
+                      handleOpenCreate();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" /> Novo item
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </>
         ) : null}
       </div>
 
@@ -2135,7 +2714,7 @@ export default function ItemsCatalog({
             >
               <div
                 className={[
-                  "inline-flex max-w-full items-center gap-1.5",
+                  "flex w-full flex-wrap items-center gap-1.5 sm:gap-2",
                   draggingCategory === category ? "opacity-80" : "",
                 ].join(" ")}
               >
@@ -2165,37 +2744,7 @@ export default function ItemsCatalog({
                       fill
                       sizes="64px"
                       quality={55}
-                      className="object-cover"
                     />
-                  </div>
-                ) : null}
-
-                {canManageItems ? (
-                  <div className="mr-1 inline-flex items-center gap-1">
-                    <button
-                      type="button"
-                      disabled={
-                        isAnyBusy || orderedCategories.indexOf(category) === 0
-                      }
-                      onClick={() => handleMoveCategoryOrder(category, "up")}
-                      aria-label={`Mover categoria ${category} para cima`}
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] text-[var(--app-muted)] transition hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <ChevronUp className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={
-                        isAnyBusy ||
-                        orderedCategories.indexOf(category) ===
-                          orderedCategories.length - 1
-                      }
-                      onClick={() => handleMoveCategoryOrder(category, "down")}
-                      aria-label={`Mover categoria ${category} para baixo`}
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] text-[var(--app-muted)] transition hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    </button>
                   </div>
                 ) : null}
 
@@ -2229,7 +2778,7 @@ export default function ItemsCatalog({
                       }
                     }}
                     aria-label={`Categoria ${category}`}
-                    className="w-56 min-w-0 !rounded-md text-xl font-semibold leading-tight sm:w-72 sm:text-2xl"
+                    className="w-full min-w-0 flex-1 !rounded-md text-lg font-semibold leading-tight sm:w-72 sm:text-2xl"
                   />
                 ) : (
                   <button
@@ -2246,7 +2795,7 @@ export default function ItemsCatalog({
                     }}
                     aria-label={`Categoria ${category}`}
                     className={[
-                      "w-auto min-w-0 select-none bg-transparent px-0 py-0 text-left text-xl font-semibold leading-tight text-[var(--app-text)] sm:text-2xl",
+                      "w-full min-w-0 flex-1 select-none truncate bg-transparent px-0 py-0 text-left text-lg font-semibold leading-tight text-[var(--app-text)] sm:w-auto sm:text-2xl",
                       canReorderCategories
                         ? "touch-none cursor-grab active:cursor-grabbing"
                         : "",
@@ -2256,51 +2805,112 @@ export default function ItemsCatalog({
                   </button>
                 )}
                 {canManageItems ? (
-                  <>
+                  <div
+                    ref={
+                      openCategoryActionsMenu === category
+                        ? categoryActionsMenuRootRef
+                        : null
+                    }
+                    data-items-category-actions-menu="true"
+                    className="relative ml-auto"
+                  >
                     <button
                       type="button"
-                      disabled={isAnyBusy}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                      }}
                       onClick={() => {
-                        openCategoryDetailsModal(category);
+                        setIsTopActionsMenuOpen(false);
+                        setOpenCategoryActionsMenu((current) =>
+                          current === category ? null : category,
+                        );
                       }}
-                      aria-label={`Editar categoria ${category}`}
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] text-[var(--app-muted)] transition hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label={`Abrir ações da categoria ${category}`}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] text-[var(--app-muted)] transition hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)]"
                     >
-                      {renamingCategory === category ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Pencil className="h-3.5 w-3.5" />
-                      )}
+                      <MoreVertical className="h-4 w-4" />
                     </button>
 
-                    <button
-                      type="button"
-                      disabled={
-                        isAnyBusy || category === UNCATEGORIZED_CATEGORY
-                      }
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                      }}
-                      onClick={() => handleRequestDeleteCategory(category)}
-                      aria-label={`Remover categoria ${category}`}
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] text-[var(--app-muted)] transition hover:bg-[var(--app-surface-muted)] hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    {openCategoryActionsMenu === category ? (
+                      <div
+                        className={[
+                          "absolute z-30 mt-1 w-52 max-w-[calc(100vw-1rem)] rounded-md border border-[var(--app-border)] bg-white p-1 shadow-lg",
+                          categoryActionsMenuAlign === "open-right"
+                            ? "left-0"
+                            : "right-0",
+                        ].join(" ")}
+                      >
+                        {activeCategoryFilter === "ALL" ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={
+                                isAnyBusy ||
+                                orderedCategories.indexOf(category) === 0
+                              }
+                              onClick={() => {
+                                setOpenCategoryActionsMenu(null);
+                                handleMoveCategoryOrder(category, "up");
+                              }}
+                              className="block w-full rounded-md px-2 py-2 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Mover para cima
+                            </button>
+                            <button
+                              type="button"
+                              disabled={
+                                isAnyBusy ||
+                                orderedCategories.indexOf(category) ===
+                                  orderedCategories.length - 1
+                              }
+                              onClick={() => {
+                                setOpenCategoryActionsMenu(null);
+                                handleMoveCategoryOrder(category, "down");
+                              }}
+                              className="block w-full rounded-md px-2 py-2 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Mover para baixo
+                            </button>
+                          </>
+                        ) : null}
 
-                    <button
-                      type="button"
-                      disabled={isAnyBusy}
-                      onClick={() => handleOpenCreateInCategory(category)}
-                      aria-label={`Adicionar item na categoria ${category}`}
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] text-[var(--app-muted)] transition hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </button>
-                  </>
+                        <button
+                          type="button"
+                          disabled={isAnyBusy}
+                          onClick={() => {
+                            setOpenCategoryActionsMenu(null);
+                            openCategoryDetailsModal(category);
+                          }}
+                          className="block w-full rounded-md px-2 py-2 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Editar categoria
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={
+                            isAnyBusy || category === UNCATEGORIZED_CATEGORY
+                          }
+                          onClick={() => {
+                            setOpenCategoryActionsMenu(null);
+                            handleRequestDeleteCategory(category);
+                          }}
+                          className="block w-full rounded-md px-2 py-2 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Remover categoria
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isAnyBusy}
+                          onClick={() => {
+                            setOpenCategoryActionsMenu(null);
+                            handleOpenCreateInCategory(category);
+                          }}
+                          className="block w-full rounded-md px-2 py-2 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Adicionar item
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
 
@@ -2313,7 +2923,7 @@ export default function ItemsCatalog({
                     height={480}
                     sizes="(max-width: 640px) 100vw, 1200px"
                     quality={60}
-                    className="h-full w-full object-contain"
+                    className="h-full w-full"
                   />
                 </div>
               ) : null}
@@ -2379,6 +2989,23 @@ export default function ItemsCatalog({
                   <article
                     key={item.id}
                     draggable={canManageItems}
+                    onClick={() => {
+                      if (!canManageItems) {
+                        setPreviewItem(item);
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (canManageItems) {
+                        return;
+                      }
+
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setPreviewItem(item);
+                      }
+                    }}
+                    role={!canManageItems ? "button" : undefined}
+                    tabIndex={!canManageItems ? 0 : undefined}
                     onDragStart={(event) => {
                       const element = event.currentTarget;
                       setDraggingItemId(item.id);
@@ -2468,6 +3095,9 @@ export default function ItemsCatalog({
                       "flex h-full flex-col border-t border-[var(--app-border)] bg-white px-0 py-3 last:border-b sm:py-4 md:rounded-md md:border md:px-2 md:shadow-[0_1px_4px_rgba(15,23,42,0.06)] md:last:border",
                       canManageItems
                         ? "cursor-grab active:cursor-grabbing"
+                        : "cursor-pointer",
+                      !canManageItems
+                        ? "transition hover:bg-[var(--app-surface-muted)]"
                         : "",
                       draggingItemId === item.id
                         ? "bg-white opacity-95 ring-2 ring-[var(--app-primary)]/45"
@@ -2526,9 +3156,9 @@ export default function ItemsCatalog({
                             src={item.imageUrl}
                             alt={`Imagem do item ${item.name}`}
                             fill
+                            draggable={false}
                             sizes="(max-width: 640px) 176px, 208px"
                             quality={60}
-                            className="object-cover"
                           />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-xs text-[var(--app-muted)]">
@@ -2768,7 +3398,7 @@ export default function ItemsCatalog({
                     width={640}
                     height={192}
                     unoptimized
-                    className="h-28 w-full rounded-md border border-[var(--app-border)] object-contain p-1"
+                    className="h-28 w-full rounded-md border border-[var(--app-border)] p-1"
                   />
                 ) : null}
               </FormLabel>
@@ -2963,7 +3593,7 @@ export default function ItemsCatalog({
                     width={640}
                     height={192}
                     unoptimized
-                    className="h-28 w-full rounded-md border border-[var(--app-border)] object-contain p-1"
+                    className="h-28 w-full rounded-md border border-[var(--app-border)] p-1"
                   />
                 ) : null}
               </FormLabel>
@@ -2987,7 +3617,7 @@ export default function ItemsCatalog({
         </div>
       ) : null}
 
-      {openAdditionalsModal ? (
+      {openAdditionalsModal && canManageItems ? (
         <div className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
           <div className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-xl sm:p-5">
             <div className="mb-4 flex items-center justify-between">
@@ -3297,6 +3927,182 @@ export default function ItemsCatalog({
         </div>
       ) : null}
 
+      {previewItem && !canManageItems ? (
+        <div
+          className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center"
+          onClick={() => setPreviewItem(null)}
+        >
+          <div
+            className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-lg sm:p-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <Title as="h2" size="modal" className="line-clamp-2">
+                  {`${previewItem.code} - ${previewItem.name}`}
+                </Title>
+                <Text tone="muted" size="sm" className="mt-1">
+                  Categoria: {previewItem.category}
+                </Text>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPreviewItem(null)}
+                className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80"
+                aria-label="Fechar modal do item"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="relative mb-3 h-44 w-full overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] sm:h-56">
+              {previewItem.imageUrl ? (
+                <Image
+                  src={previewItem.imageUrl}
+                  alt={`Imagem do item ${previewItem.name}`}
+                  fill
+                  draggable={false}
+                  sizes="(max-width: 640px) 100vw, 640px"
+                  quality={60}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-sm text-[var(--app-muted)]">
+                  Sem imagem
+                </div>
+              )}
+            </div>
+
+            <Text size="sm" className="text-[var(--app-text)]">
+              {previewItem.description?.trim() || "Sem descrição."}
+            </Text>
+
+            {previewItem.serves_people > 1 ? (
+              <Text
+                size="sm"
+                className="mt-2 font-semibold text-[var(--app-text)]"
+              >
+                Serve {previewItem.serves_people} pessoas
+              </Text>
+            ) : null}
+
+            {previewItemAdditionals.length > 0 ? (
+              <div className="mt-3 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3">
+                <Text
+                  size="sm"
+                  className="font-semibold text-[var(--app-text)]"
+                >
+                  Adicionais disponíveis
+                </Text>
+                <div className="mt-2 space-y-1.5">
+                  {previewItemAdditionals.map((additional) => (
+                    <div
+                      key={additional.id}
+                      className="flex items-start justify-between gap-3 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <Text
+                          size="sm"
+                          className="font-medium text-[var(--app-text)]"
+                        >
+                          {additional.title}
+                        </Text>
+                        {additional.description ? (
+                          <Text tone="muted" size="sm" className="line-clamp-2">
+                            {additional.description}
+                          </Text>
+                        ) : null}
+                      </div>
+                      <Text
+                        size="sm"
+                        className="whitespace-nowrap font-semibold text-[var(--app-text)]"
+                      >
+                        + {formatPriceLabel(additional.price)}
+                      </Text>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-3 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3">
+              {previewItem.promotional_price !== null &&
+              previewItem.promotional_price < previewItem.price ? (
+                <>
+                  <Text tone="muted" size="sm" className="line-through">
+                    {formatPriceLabel(previewItem.price)}
+                  </Text>
+                  <Text size="lg" className="font-semibold text-emerald-700">
+                    {formatPriceLabel(previewItem.promotional_price)}
+                  </Text>
+                </>
+              ) : (
+                <Text
+                  size="lg"
+                  className="font-semibold text-[var(--app-text)]"
+                >
+                  {formatPriceLabel(previewItem.price)}
+                </Text>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {openQrModal && canManageItems ? (
+        <div
+          className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center"
+          onClick={() => setOpenQrModal(false)}
+        >
+          <div
+            className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:p-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <Title as="h2" size="modal">
+                QR Code do cardápio
+              </Title>
+              <button
+                type="button"
+                onClick={() => setOpenQrModal(false)}
+                className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80"
+                aria-label="Fechar modal de QR Code"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {publicMenuUrl ? (
+              <>
+                <div className="rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={qrCodeImageUrl}
+                    alt="QR Code do cardápio"
+                    className="mx-auto h-64 w-64 rounded-md border border-[var(--app-border)] bg-white p-2"
+                  />
+                </div>
+                <Text tone="muted" size="sm" className="mt-3 break-all">
+                  {publicMenuUrl}
+                </Text>
+
+                <button
+                  type="button"
+                  onClick={handlePrintQrCode}
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-3 py-2 text-sm font-semibold text-[var(--app-primary-contrast)]"
+                >
+                  <Printer className="h-4 w-4" /> Imprimir QR
+                </button>
+              </>
+            ) : (
+              <Text tone="muted" size="sm">
+                Não foi possível montar o link público do cardápio.
+              </Text>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       <ConfirmationModal
         isOpen={Boolean(itemPendingDelete)}
         title="Confirmar exclusão"
@@ -3397,7 +4203,7 @@ export default function ItemsCatalog({
                     width={640}
                     height={192}
                     unoptimized
-                    className="h-24 w-full rounded-md border border-[var(--app-border)] object-contain p-1"
+                    className="h-24 w-full rounded-md border border-[var(--app-border)] p-1"
                   />
                 ) : null}
               </FormLabel>
@@ -3482,7 +4288,7 @@ export default function ItemsCatalog({
                       width={640}
                       height={192}
                       unoptimized
-                      className="h-24 w-full rounded-md border border-[var(--app-border)] object-contain p-1"
+                      className="h-24 w-full rounded-md border border-[var(--app-border)] p-1"
                     />
                     <button
                       type="button"

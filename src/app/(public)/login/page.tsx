@@ -11,7 +11,7 @@ import { z } from "zod";
 import { createClient } from "@/utils/supabase/client";
 import { cn } from "@/lib/cn";
 
-const CURRENT_TENANT_SLUG = "manja";
+const CURRENT_TENANT_SLUG = "labavetteresto";
 
 const loginSchema = z.object({
   email: z.email("Informe um email valido"),
@@ -230,8 +230,8 @@ export default function Page() {
         </div>
 
         <p className="mb-6 text-xs text-slate-500">
-          Cada usuario pertence ao tenant MANJA. No futuro, o tenant sera
-          resolvido por dominio.
+          Cada usuario pertence ao tenant Lá Bavette Restô. No futuro, o
+          tenant sera resolvido por dominio.
         </p>
 
         {mode === "login" ? (

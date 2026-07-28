@@ -437,24 +437,72 @@ function MesaCard({
 }) {
   const style = statusStyles[mesa.status];
   const StatusIcon = style.icon;
+  const menuRootRef = useRef<HTMLDivElement | null>(null);
+  const [menuHorizontalAlign, setMenuHorizontalAlign] = useState<
+    "open-left" | "open-right"
+  >("open-left");
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+
+    const updateMenuAlign = () => {
+      const root = menuRootRef.current;
+
+      if (!root) {
+        return;
+      }
+
+      const rootRect = root.getBoundingClientRect();
+      const menuWidth = 160;
+      const spacing = 12;
+
+      const availableToRight = window.innerWidth - rootRect.left - spacing;
+      const availableToLeft = rootRect.right - spacing;
+
+      if (availableToRight >= menuWidth || availableToRight > availableToLeft) {
+        setMenuHorizontalAlign("open-right");
+        return;
+      }
+
+      setMenuHorizontalAlign("open-left");
+    };
+
+    updateMenuAlign();
+    window.addEventListener("resize", updateMenuAlign);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuAlign);
+    };
+  }, [menuOpen]);
 
   return (
     <div
       className={`relative min-h-32 rounded-xl border p-2 shadow-sm ${style.card}`}
     >
-      <div className="absolute right-2 top-2">
+      <div
+        ref={menuRootRef}
+        data-mesa-menu-root="true"
+        className="absolute right-2 top-2 z-30"
+      >
         <button
           type="button"
           aria-label="Abrir opções da mesa"
           disabled={isBusy}
           onClick={() => onToggleMenu(mesa.id)}
-          className="rounded-md p-1 text-[var(--app-muted)] transition hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[var(--app-muted)] transition hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <MoreVertical className="h-4 w-4" />
         </button>
 
         {menuOpen ? (
-          <div className="absolute right-0 z-20 mt-1 w-40 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-lg">
+          <div
+            className={[
+              "absolute z-40 mt-1 w-40 max-w-[calc(100vw-1rem)] rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-lg",
+              menuHorizontalAlign === "open-right" ? "left-0" : "right-0",
+            ].join(" ")}
+          >
             <button
               type="button"
               disabled={isBusy}
@@ -487,7 +535,7 @@ function MesaCard({
         type="button"
         disabled={isBusy}
         onClick={() => onOpen(mesa)}
-        className="block w-full pt-3 text-center transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-80"
+        className="relative z-0 block w-full pt-3 text-center transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-80"
       >
         <MesaIcon
           code={mesa.code}
@@ -521,6 +569,9 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     useState(false);
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
   const [isPagamentoMenuOpen, setIsPagamentoMenuOpen] = useState(false);
+  const [pagamentoMenuAlign, setPagamentoMenuAlign] = useState<
+    "open-left" | "open-right"
+  >("open-left");
   const pagamentoMenuRef = useRef<HTMLDivElement | null>(null);
   const [openCloseComandaConfirm, setOpenCloseComandaConfirm] = useState(false);
   const [closeComandaObservation, setCloseComandaObservation] = useState("");
@@ -592,6 +643,75 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  useEffect(() => {
+    if (!menuMesaId) {
+      return;
+    }
+
+    const handleOutsideMesaMenu = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as HTMLElement | null;
+
+      if (target?.closest('[data-mesa-menu-root="true"]')) {
+        return;
+      }
+
+      setMenuMesaId(null);
+    };
+
+    const handleScrollCloseMesaMenu = () => {
+      setMenuMesaId(null);
+    };
+
+    document.addEventListener("mousedown", handleOutsideMesaMenu);
+    document.addEventListener("touchstart", handleOutsideMesaMenu, {
+      passive: true,
+    });
+    window.addEventListener("scroll", handleScrollCloseMesaMenu, {
+      capture: true,
+      passive: true,
+    });
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideMesaMenu);
+      document.removeEventListener("touchstart", handleOutsideMesaMenu);
+      window.removeEventListener("scroll", handleScrollCloseMesaMenu, true);
+    };
+  }, [menuMesaId]);
+
+  useEffect(() => {
+    if (!isPagamentoMenuOpen) {
+      return;
+    }
+
+    const updatePagamentoMenuAlign = () => {
+      const root = pagamentoMenuRef.current;
+
+      if (!root) {
+        return;
+      }
+
+      const rootRect = root.getBoundingClientRect();
+      const menuWidth = 220;
+      const spacing = 12;
+      const availableToRight = window.innerWidth - rootRect.left - spacing;
+      const availableToLeft = rootRect.right - spacing;
+
+      if (availableToRight >= menuWidth || availableToRight > availableToLeft) {
+        setPagamentoMenuAlign("open-right");
+        return;
+      }
+
+      setPagamentoMenuAlign("open-left");
+    };
+
+    updatePagamentoMenuAlign();
+    window.addEventListener("resize", updatePagamentoMenuAlign);
+
+    return () => {
+      window.removeEventListener("resize", updatePagamentoMenuAlign);
+    };
+  }, [isPagamentoMenuOpen]);
 
   const statusLegend = useMemo(
     () => [
@@ -953,7 +1073,10 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   const isSelectedCatalogItemByWeight =
     selectedCatalogItem?.pricing_type === "PESO";
   const selectedItemQuantity = Math.max(1, Number(itemDraft.quantity) || 1);
-  const selectedItemWeightKg = Math.max(0, maskedWeightToNumber(itemDraft.weightKg));
+  const selectedItemWeightKg = Math.max(
+    0,
+    maskedWeightToNumber(itemDraft.weightKg),
+  );
   const selectedBaseTotal = isSelectedCatalogItemByWeight
     ? selectedCatalogItemUnitPrice * selectedItemWeightKg
     : selectedCatalogItemUnitPrice * selectedItemQuantity;
@@ -1264,7 +1387,9 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     );
     const isByWeight = selectedItem?.pricing_type === "PESO";
     const quantity = isByWeight ? 1 : Number(itemDraft.quantity);
-    const weightKg = isByWeight ? maskedWeightToNumber(itemDraft.weightKg) : null;
+    const weightKg = isByWeight
+      ? maskedWeightToNumber(itemDraft.weightKg)
+      : null;
 
     if (!selectedItem) {
       toast.error(
@@ -2101,7 +2226,14 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                           </button>
 
                           {isPagamentoMenuOpen ? (
-                            <div className="absolute left-0 top-full z-30 mt-1 w-full min-w-[220px] rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-lg">
+                            <div
+                              className={[
+                                "absolute top-full z-30 mt-1 w-max min-w-[220px] max-w-[calc(100vw-1rem)] rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-lg",
+                                pagamentoMenuAlign === "open-right"
+                                  ? "left-0"
+                                  : "right-0",
+                              ].join(" ")}
+                            >
                               <button
                                 type="button"
                                 disabled={isDetailStatusBusy}

@@ -1,13 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {
-  Boxes,
-  LogIn,
-  Search,
-  SquareKanban,
-  UtensilsCrossed,
-} from "lucide-react";
+import { LogIn, Search, SquareKanban, UtensilsCrossed } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 
@@ -30,7 +24,6 @@ const linksByRole = {
   DONO: [
     { href: "/mesas", label: "Mesas" },
     { href: "/cardapio", label: "Cardápio" },
-    { href: "/estoque", label: "Estoque" },
   ],
 } as const;
 
@@ -40,7 +33,10 @@ export default function AppNavigation({
   variant = "header",
 }: AppNavigationProps) {
   const pathname = usePathname();
-  const allowedLinks = linksByRole[userRole];
+  const allowedLinks =
+    userRole === "VISITANTE" && pathname.startsWith("/cardapio")
+      ? linksByRole[userRole].filter((link) => link.href !== "/login")
+      : linksByRole[userRole];
 
   const iconByHref: Record<
     string,
@@ -51,7 +47,6 @@ export default function AppNavigation({
     "/mesas": UtensilsCrossed,
     "/cardapio": Search,
     "/items": Search,
-    "/estoque": Boxes,
     "/perfil": SquareKanban,
   };
 
