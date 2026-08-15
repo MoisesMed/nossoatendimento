@@ -117,10 +117,9 @@ export async function DELETE(_: Request, { params }: RouteContext) {
 
   const { error } = await supabase
     .from("restaurant_tables")
-    .update({ active: false })
+    .delete()
     .eq("id", id)
-    .eq("tenant_id", tenantId)
-    .eq("active", true);
+    .eq("tenant_id", tenantId);
 
   if (error) {
     return NextResponse.json({ error: "Falha ao deletar mesa" }, { status: 500 });

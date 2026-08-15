@@ -69,6 +69,10 @@ export default function Page() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [accessWarning, setAccessWarning] = useState<string | null>(null);
   const [loginFeedback, setLoginFeedback] = useState<string | null>(null);
+  const [hasTriedRegisterSubmit, setHasTriedRegisterSubmit] = useState(false);
+  const [registerInteractedFields, setRegisterInteractedFields] = useState<
+    Partial<Record<keyof RegisterInput, boolean>>
+  >({});
   const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState<
     string | null
   >(null);
@@ -141,6 +145,7 @@ export default function Page() {
   const {
     register: registerRegister,
     handleSubmit: handleRegisterSubmit,
+    reset: resetRegisterForm,
     formState: { errors: registerErrors, isSubmitting: isRegisterSubmitting },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
@@ -152,6 +157,15 @@ export default function Page() {
       confirmPassword: "",
     },
   });
+
+  const markRegisterFieldInteracted = (fieldName: keyof RegisterInput) => {
+    setRegisterInteractedFields((current) =>
+      current[fieldName] ? current : { ...current, [fieldName]: true },
+    );
+  };
+
+  const showRegisterFieldError = (fieldName: keyof RegisterInput) =>
+    hasTriedRegisterSubmit || Boolean(registerInteractedFields[fieldName]);
 
   const loginMutation = useMutation({
     mutationFn: async (input: LoginInput) => {
@@ -219,6 +233,7 @@ export default function Page() {
 
   const onRegisterSubmit = async (data: RegisterInput) => {
     try {
+      setHasTriedRegisterSubmit(true);
       const authData = await registerMutation.mutateAsync(data);
 
       if (authData.session) {
@@ -344,6 +359,9 @@ export default function Page() {
               onClick={() => {
                 setLoginFeedback(null);
                 setPendingConfirmationEmail(null);
+                setHasTriedRegisterSubmit(false);
+                setRegisterInteractedFields({});
+                resetRegisterForm();
                 setMode("register");
               }}
               className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -354,7 +372,10 @@ export default function Page() {
         ) : (
           <form
             className="space-y-4"
-            onSubmit={handleRegisterSubmit(onRegisterSubmit)}
+            onSubmit={handleRegisterSubmit(
+              onRegisterSubmit,
+              () => setHasTriedRegisterSubmit(true),
+            )}
           >
             <button
               type="button"
@@ -374,14 +395,16 @@ export default function Page() {
                 {...registerRegister("fullName")}
                 placeholder="Nome e sobrenome"
                 disabled={isRegisterLoading}
+                onFocus={() => markRegisterFieldInteracted("fullName")}
                 className={cn(
                   "w-full rounded-xl border px-3 py-2 text-sm outline-none transition",
-                  registerErrors.fullName
+                  registerErrors.fullName &&
+                    showRegisterFieldError("fullName")
                     ? "border-red-500"
                     : "border-gray-300 focus:border-emerald-600",
                 )}
               />
-              {registerErrors.fullName ? (
+              {registerErrors.fullName && showRegisterFieldError("fullName") ? (
                 <p className="text-xs text-red-500">
                   {registerErrors.fullName.message}
                 </p>
@@ -395,14 +418,15 @@ export default function Page() {
                 type="email"
                 placeholder="voce@restaurante.com"
                 disabled={isRegisterLoading}
+                onFocus={() => markRegisterFieldInteracted("email")}
                 className={cn(
                   "w-full rounded-xl border px-3 py-2 text-sm outline-none transition",
-                  registerErrors.email
+                  registerErrors.email && showRegisterFieldError("email")
                     ? "border-red-500"
                     : "border-gray-300 focus:border-emerald-600",
                 )}
               />
-              {registerErrors.email ? (
+              {registerErrors.email && showRegisterFieldError("email") ? (
                 <p className="text-xs text-red-500">
                   {registerErrors.email.message}
                 </p>
@@ -415,14 +439,15 @@ export default function Page() {
                 {...registerRegister("phone")}
                 placeholder="11999999999"
                 disabled={isRegisterLoading}
+                onFocus={() => markRegisterFieldInteracted("phone")}
                 className={cn(
                   "w-full rounded-xl border px-3 py-2 text-sm outline-none transition",
-                  registerErrors.phone
+                  registerErrors.phone && showRegisterFieldError("phone")
                     ? "border-red-500"
                     : "border-gray-300 focus:border-emerald-600",
                 )}
               />
-              {registerErrors.phone ? (
+              {registerErrors.phone && showRegisterFieldError("phone") ? (
                 <p className="text-xs text-red-500">
                   {registerErrors.phone.message}
                 </p>
@@ -436,14 +461,16 @@ export default function Page() {
                 type="password"
                 placeholder="******"
                 disabled={isRegisterLoading}
+                onFocus={() => markRegisterFieldInteracted("password")}
                 className={cn(
                   "w-full rounded-xl border px-3 py-2 text-sm outline-none transition",
-                  registerErrors.password
+                  registerErrors.password &&
+                    showRegisterFieldError("password")
                     ? "border-red-500"
                     : "border-gray-300 focus:border-emerald-600",
                 )}
               />
-              {registerErrors.password ? (
+              {registerErrors.password && showRegisterFieldError("password") ? (
                 <p className="text-xs text-red-500">
                   {registerErrors.password.message}
                 </p>
@@ -457,14 +484,17 @@ export default function Page() {
                 type="password"
                 placeholder="******"
                 disabled={isRegisterLoading}
+                onFocus={() => markRegisterFieldInteracted("confirmPassword")}
                 className={cn(
                   "w-full rounded-xl border px-3 py-2 text-sm outline-none transition",
-                  registerErrors.confirmPassword
+                  registerErrors.confirmPassword &&
+                    showRegisterFieldError("confirmPassword")
                     ? "border-red-500"
                     : "border-gray-300 focus:border-emerald-600",
                 )}
               />
-              {registerErrors.confirmPassword ? (
+              {registerErrors.confirmPassword &&
+              showRegisterFieldError("confirmPassword") ? (
                 <p className="text-xs text-red-500">
                   {registerErrors.confirmPassword.message}
                 </p>

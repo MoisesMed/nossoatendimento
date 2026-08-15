@@ -134,6 +134,22 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
+    if (error.code === "23505") {
+      if (error.message.includes("restaurant_tables_tenant_id_name_key")) {
+        return NextResponse.json(
+          { error: "Ja existe uma mesa com esse nome neste restaurante" },
+          { status: 409 },
+        );
+      }
+
+      if (error.message.includes("restaurant_tables_tenant_id_code_key")) {
+        return NextResponse.json(
+          { error: "Ja existe uma mesa com esse numero neste restaurante" },
+          { status: 409 },
+        );
+      }
+    }
+
     return NextResponse.json({ error: "Falha ao criar mesa" }, { status: 500 });
   }
 

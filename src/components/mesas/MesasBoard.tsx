@@ -129,9 +129,13 @@ const CREATE_NEW_CATALOG_ITEM_VALUE = "__CREATE_NEW_CATALOG_ITEM__";
 const DAILY_COUVERT_STORAGE_PREFIX = "nossoatendimento-daily-couvert";
 const DAILY_COUVERT_ENABLED_STORAGE_PREFIX =
   "nossoatendimento-daily-couvert-enabled";
-const MESA_ITEMS_STORAGE_KEY = "nossoatendimento-mesa-items";
 const MESA_PAYMENTS_STORAGE_KEY = "nossoatendimento-mesa-payments";
 const CLOSED_COMANDAS_STORAGE_KEY = "nossoatendimento-closed-comandas";
+
+let catalogItemsRequest: Promise<CatalogItem[]> | null = null;
+let catalogItemsCache: CatalogItem[] | null = null;
+let catalogItemAdditionalsRequest: Promise<CatalogItemAdditional[]> | null = null;
+let catalogItemAdditionalsCache: CatalogItemAdditional[] | null = null;
 
 const paymentMethodLabels: Record<PaymentMethod, string> = {
   CREDITO: "Cartão de Credito",
@@ -181,6 +185,66 @@ function formatMesaItemName(item: MesaItem) {
   }
 
   return item.name;
+}
+
+async function fetchCatalogItemsOnce() {
+  if (catalogItemsCache) {
+    return catalogItemsCache;
+  }
+
+  if (!catalogItemsRequest) {
+    catalogItemsRequest = (async () => {
+      const response = await fetch("/api/items", { method: "GET" });
+      const result = (await response.json().catch(() => ({}))) as {
+        data?: CatalogItem[];
+        error?: string;
+      };
+
+      if (!response.ok || !result.data) {
+        throw new Error(result.error ?? "Falha ao carregar itens do cardápio.");
+      }
+
+      const normalized = result.data
+        .filter((item) => item.active)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      catalogItemsCache = normalized;
+      return normalized;
+    })().finally(() => {
+      catalogItemsRequest = null;
+    });
+  }
+
+  return catalogItemsRequest;
+}
+
+async function fetchCatalogItemAdditionalsOnce() {
+  if (catalogItemAdditionalsCache) {
+    return catalogItemAdditionalsCache;
+  }
+
+  if (!catalogItemAdditionalsRequest) {
+    catalogItemAdditionalsRequest = (async () => {
+      const response = await fetch("/api/items/additionals", {
+        method: "GET",
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        data?: CatalogItemAdditional[];
+        error?: string;
+      };
+
+      if (!response.ok || !result.data) {
+        throw new Error(result.error ?? "Falha ao carregar adicionais.");
+      }
+
+      const normalized = result.data.filter((additional) => additional.active);
+      catalogItemAdditionalsCache = normalized;
+      return normalized;
+    })().finally(() => {
+      catalogItemAdditionalsRequest = null;
+    });
+  }
+
+  return catalogItemAdditionalsRequest;
 }
 
 function ItemDropdownIndicator(
@@ -573,6 +637,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     "open-left" | "open-right"
   >("open-left");
   const pagamentoMenuRef = useRef<HTMLDivElement | null>(null);
+  const hasLoadedMesaItemsRef = useRef(false);
   const [openCloseComandaConfirm, setOpenCloseComandaConfirm] = useState(false);
   const [closeComandaObservation, setCloseComandaObservation] = useState("");
   const [isClosingComanda, setIsClosingComanda] = useState(false);
@@ -772,7 +837,12 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       setOpenCreateModal(false);
       toast.success("Mesa criada com sucesso.");
     },
-    onError: () => {
+    onError: (error) => {
+      if (error instanceof Error) {
+        toast.error(error.message);
+        return;
+      }
+
       toast.error("Não foi possível criar a mesa.");
     },
   });
@@ -828,6 +898,144 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
 
     await createMesaMutation.mutateAsync(formData);
   };
+
+  const loadMesaItemsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/mesas/items", { method: "GET" });
+      const result = (await response.json().catch(() => ({}))) as {
+        data?: Array<MesaItem & { mesaId: string }>;
+        error?: string;
+      };
+
+      if (!response.ok || !result.data) {
+        throw new Error(result.error ?? "Falha ao carregar itens das mesas");
+      }
+
+      return result.data;
+    },
+    onSuccess: (items) => {
+      const grouped = items.reduce<Record<string, MesaItem[]>>((acc, item) => {
+        const mesaId = item.mesaId;
+        const normalizedItem: MesaItem = {
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          originalPrice: item.originalPrice ?? null,
+          delivered: item.delivered,
+          pricingType: item.pricingType,
+          weightKg: item.weightKg,
+          additionalTitles: item.additionalTitles ?? [],
+          additionalTotal: item.additionalTotal,
+        };
+
+        if (!acc[mesaId]) {
+          acc[mesaId] = [normalizedItem];
+          return acc;
+        }
+
+        acc[mesaId].push(normalizedItem);
+        return acc;
+      }, {});
+
+      setMesaItemsByMesaId(grouped);
+    },
+    onError: (error) => {
+      if (error instanceof Error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.error("Não foi possível carregar os itens das mesas.");
+    },
+  });
+
+  const createMesaItemMutation = useMutation({
+    mutationFn: async ({
+      mesaId,
+      payload,
+    }: {
+      mesaId: string;
+      payload: Omit<MesaItem, "id">;
+    }) => {
+      const response = await fetch(`/api/mesas/${mesaId}/items`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        data?: MesaItem;
+        error?: string;
+      };
+
+      if (!response.ok || !result.data) {
+        throw new Error(result.error ?? "Falha ao salvar item da mesa");
+      }
+
+      return result.data;
+    },
+    onSuccess: (createdItem, variables) => {
+      setMesaItemsByMesaId((prev) => ({
+        ...prev,
+        [variables.mesaId]: [...(prev[variables.mesaId] ?? []), createdItem],
+      }));
+    },
+  });
+
+  const updateMesaItemMutation = useMutation({
+    mutationFn: async ({
+      mesaId,
+      itemId,
+      delivered,
+    }: {
+      mesaId: string;
+      itemId: string;
+      delivered: boolean;
+    }) => {
+      const response = await fetch(`/api/mesas/${mesaId}/items/${itemId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ delivered }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        data?: MesaItem;
+        error?: string;
+      };
+
+      if (!response.ok || !result.data) {
+        throw new Error(result.error ?? "Falha ao atualizar item da mesa");
+      }
+
+      return result.data;
+    },
+    onSuccess: (updatedItem, variables) => {
+      setMesaItemsByMesaId((prev) => ({
+        ...prev,
+        [variables.mesaId]: (prev[variables.mesaId] ?? []).map((item) =>
+          item.id === updatedItem.id ? updatedItem : item,
+        ),
+      }));
+    },
+  });
+
+  const clearMesaItemsMutation = useMutation({
+    mutationFn: async (mesaId: string) => {
+      const response = await fetch(`/api/mesas/${mesaId}/items`, {
+        method: "DELETE",
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(result.error ?? "Falha ao limpar itens da mesa");
+      }
+    },
+  });
 
   const updateMesaMutation = useMutation({
     mutationFn: async ({
@@ -907,7 +1115,10 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   const isAnyMesaMutationPending =
     createMesaMutation.isPending ||
     updateMesaMutation.isPending ||
-    deleteMesaMutation.isPending;
+    deleteMesaMutation.isPending ||
+    createMesaItemMutation.isPending ||
+    updateMesaItemMutation.isPending ||
+    clearMesaItemsMutation.isPending;
   const isCreateModalBusy = createMesaMutation.isPending;
   const isEditModalBusy = updateMesaMutation.isPending;
   const isDetailStatusBusy =
@@ -1086,19 +1297,13 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   const selectedItemTotal = selectedBaseTotal + selectedAdditionalTotal;
 
   useEffect(() => {
-    const storedMesaItems = window.localStorage.getItem(MESA_ITEMS_STORAGE_KEY);
-
-    if (!storedMesaItems) {
+    if (hasLoadedMesaItemsRef.current) {
       return;
     }
 
-    try {
-      const parsed = JSON.parse(storedMesaItems) as Record<string, MesaItem[]>;
-      setMesaItemsByMesaId(parsed);
-    } catch {
-      window.localStorage.removeItem(MESA_ITEMS_STORAGE_KEY);
-    }
-  }, []);
+    hasLoadedMesaItemsRef.current = true;
+    loadMesaItemsMutation.mutate();
+  }, [loadMesaItemsMutation]);
 
   useEffect(() => {
     const storedPayments = window.localStorage.getItem(
@@ -1136,13 +1341,6 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       window.localStorage.removeItem(CLOSED_COMANDAS_STORAGE_KEY);
     }
   }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      MESA_ITEMS_STORAGE_KEY,
-      JSON.stringify(mesaItemsByMesaId),
-    );
-  }, [mesaItemsByMesaId]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -1190,27 +1388,13 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       setIsLoadingCatalogItems(true);
 
       try {
-        const response = await fetch("/api/items", { method: "GET" });
-        const result = (await response.json().catch(() => ({}))) as {
-          data?: CatalogItem[];
-          error?: string;
-        };
-
-        if (!response.ok || !result.data) {
-          throw new Error(
-            result.error ?? "Falha ao carregar itens do cardápio.",
-          );
-        }
+        const data = await fetchCatalogItemsOnce();
 
         if (!isMounted) {
           return;
         }
 
-        setCatalogItems(
-          result.data
-            .filter((item) => item.active)
-            .sort((a, b) => a.name.localeCompare(b.name)),
-        );
+        setCatalogItems(data);
       } catch (error) {
         if (!isMounted) {
           return;
@@ -1242,25 +1426,13 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       setIsLoadingCatalogItemAdditionals(true);
 
       try {
-        const response = await fetch("/api/items/additionals", {
-          method: "GET",
-        });
-        const result = (await response.json().catch(() => ({}))) as {
-          data?: CatalogItemAdditional[];
-          error?: string;
-        };
-
-        if (!response.ok || !result.data) {
-          throw new Error(result.error ?? "Falha ao carregar adicionais.");
-        }
+        const data = await fetchCatalogItemAdditionalsOnce();
 
         if (!isMounted) {
           return;
         }
 
-        setCatalogItemAdditionals(
-          result.data.filter((additional) => additional.active),
-        );
+        setCatalogItemAdditionals(data);
       } catch (error) {
         if (!isMounted) {
           return;
@@ -1375,7 +1547,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     });
   };
 
-  const handleAddItem = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleAddItem = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!mesaForDetail) {
@@ -1437,8 +1609,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
         : selectedItem.price
       : null;
 
-    const nextItem: MesaItem = {
-      id: crypto.randomUUID(),
+    const nextItemPayload: Omit<MesaItem, "id"> = {
       name: selectedItem.name,
       quantity,
       price: lineAppliedPrice,
@@ -1452,12 +1623,22 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       additionalTotal: additionalsUnitTotal,
     };
 
-    setMesaItemsByMesaId((prev) => ({
-      ...prev,
-      [mesaForDetail.id]: [...(prev[mesaForDetail.id] ?? []), nextItem],
-    }));
+    try {
+      await createMesaItemMutation.mutateAsync({
+        mesaId: mesaForDetail.id,
+        payload: nextItemPayload,
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+        return;
+      }
 
-    toast.success("Item adicionado em aguardando envio.");
+      toast.error("Não foi possível adicionar item na mesa.");
+      return;
+    }
+
+    toast.success("Item adicionado com sucesso.");
 
     setItemDraft({ catalogItemId: "", quantity: "1", weightKg: "" });
     setSelectedAdditionalIds([]);
@@ -1551,17 +1732,25 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     }
   };
 
-  const handleToggleDelivered = (itemId: string, delivered: boolean) => {
+  const handleToggleDelivered = async (itemId: string, delivered: boolean) => {
     if (!mesaForDetail) {
       return;
     }
 
-    setMesaItemsByMesaId((prev) => ({
-      ...prev,
-      [mesaForDetail.id]: (prev[mesaForDetail.id] ?? []).map((item) =>
-        item.id === itemId ? { ...item, delivered } : item,
-      ),
-    }));
+    try {
+      await updateMesaItemMutation.mutateAsync({
+        mesaId: mesaForDetail.id,
+        itemId,
+        delivered,
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.error("Não foi possível atualizar o item da mesa.");
+    }
   };
 
   const handleOpenPartialPayment = () => {
@@ -1670,6 +1859,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
         mesaId,
         payload: { status: "VAZIA" },
       });
+      await clearMesaItemsMutation.mutateAsync(mesaId);
 
       persistClosedComanda({
         id: crypto.randomUUID(),
@@ -2690,8 +2880,9 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
 
               <button
                 type="button"
+                disabled={createMesaItemMutation.isPending}
                 onClick={() => setIsAddItemModalOpen(false)}
-                className="rounded-full p-1 text-[var(--app-muted)] hover:opacity-80"
+                className="rounded-full p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-60"
                 aria-label="Fechar modal de adicionar item"
               >
                 <X className="h-5 w-5" />
@@ -2912,10 +3103,16 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
 
               <button
                 type="submit"
-                disabled={isDetailStatusBusy || !itemDraft.catalogItemId}
+                disabled={
+                  isDetailStatusBusy ||
+                  !itemDraft.catalogItemId ||
+                  createMesaItemMutation.isPending
+                }
                 className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Confirmar item
+                {createMesaItemMutation.isPending
+                  ? "Salvando item..."
+                  : "Confirmar item"}
               </button>
             </form>
           </div>
