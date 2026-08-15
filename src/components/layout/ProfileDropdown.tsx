@@ -419,6 +419,11 @@ export default function ProfileDropdown({
               <option value="ATENDENTE">Atendente</option>
               <option value="USUARIO">Usuario</option>
             </select>
+            {employeeRole === "DONO" ? (
+              <p className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                Atenção: esta permissão concede acesso total ao restaurante.
+              </p>
+            ) : null}
           </label>
 
           <div className="grid grid-cols-2 gap-2 pt-2">
