@@ -3065,7 +3065,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
         type="button"
         disabled={isAnyMesaMutationPending}
         onClick={() => setOpenCreateModal(true)}
-        className="fixed bottom-10 right-5 z-30 flex h-15 w-15 flex-col items-center justify-center rounded-full bg-[var(--app-primary)] text-[var(--app-primary-contrast)] shadow-2xl transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+        className="fixed bottom-12 right-5 z-30 flex h-12 w-12 flex-col items-center justify-center rounded-full bg-[var(--app-primary)] text-[var(--app-primary-contrast)] shadow-2xl transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <Plus className="h-6 w-6" />
       </button>
