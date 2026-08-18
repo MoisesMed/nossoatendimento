@@ -22,6 +22,7 @@ type ItemRow = {
   promotional_price: number | null;
   pricing_type: "UNIDADE" | "PESO";
   active: boolean;
+  visible_in_menu: boolean;
   image_path: string | null;
   category: string;
   serves_people: number;
@@ -36,6 +37,7 @@ const createItemSchema = z.object({
   pricingType: z.enum(["UNIDADE", "PESO"]).optional(),
   servesPeople: z.number().int().min(1).max(99).optional(),
   imagePath: z.string().trim().min(1).max(500).optional(),
+  visibleInMenu: z.boolean().optional(),
 });
 
 async function withSignedImage(supabase: Awaited<ReturnType<typeof createClient>>, row: ItemRow) {
@@ -128,7 +130,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("menu_items")
-    .select("id, code, name, description, price, promotional_price, pricing_type, active, image_path, category, serves_people")
+    .select("id, code, name, description, price, promotional_price, pricing_type, active, visible_in_menu, image_path, category, serves_people")
     .eq("tenant_id", tenantId)
     .eq("active", true)
     .order("category", { ascending: true })
@@ -172,23 +174,41 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data, error } = await supabase
+  const baseInsertPayload = {
+    tenant_id: tenantId,
+    name: parsed.data.name,
+    category: parsed.data.category,
+    description: parsed.data.description && parsed.data.description.length > 0
+      ? parsed.data.description
+      : null,
+    price: parsed.data.price,
+    promotional_price: parsed.data.promotionalPrice ?? null,
+    pricing_type: parsed.data.pricingType ?? "UNIDADE",
+    serves_people: parsed.data.servesPeople ?? 1,
+    image_path: parsed.data.imagePath ?? null,
+    visible_in_menu: parsed.data.visibleInMenu ?? true,
+  };
+
+  const insertWithVisibility = {
+    ...baseInsertPayload,
+    visible_in_menu_updated_at: new Date().toISOString(),
+  };
+
+  let { data, error } = await supabase
     .from("menu_items")
-    .insert({
-      tenant_id: tenantId,
-      name: parsed.data.name,
-      category: parsed.data.category,
-      description: parsed.data.description && parsed.data.description.length > 0
-        ? parsed.data.description
-        : null,
-      price: parsed.data.price,
-      promotional_price: parsed.data.promotionalPrice ?? null,
-      pricing_type: parsed.data.pricingType ?? "UNIDADE",
-      serves_people: parsed.data.servesPeople ?? 1,
-      image_path: parsed.data.imagePath ?? null,
-    })
-    .select("id, code, name, description, price, promotional_price, pricing_type, active, image_path, category, serves_people")
+    .insert(insertWithVisibility)
+    .select("id, code, name, description, price, promotional_price, pricing_type, active, visible_in_menu, image_path, category, serves_people")
     .single();
+
+  if (error && error.code === "42703") {
+    const retry = await supabase
+      .from("menu_items")
+      .insert(baseInsertPayload)
+      .select("id, code, name, description, price, promotional_price, pricing_type, active, visible_in_menu, image_path, category, serves_people")
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     if (error.code === "23505") {

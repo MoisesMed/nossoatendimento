@@ -6,6 +6,8 @@ import { useMutation } from "@tanstack/react-query";
 import {
   ChevronDown,
   GripVertical,
+  Eye,
+  EyeOff,
   Loader2,
   MoreVertical,
   Pencil,
@@ -38,6 +40,7 @@ type MenuItem = {
   pricing_type: "UNIDADE" | "PESO";
   serves_people: number;
   active: boolean;
+  visible_in_menu: boolean;
   image_path: string | null;
   imageUrl: string | null;
 };
@@ -56,6 +59,7 @@ type MenuAdditional = {
 type CategoryImageData = {
   imagePath: string | null;
   imageUrl: string | null;
+  visibleInMenu: boolean;
 };
 
 type ItemForm = {
@@ -66,6 +70,7 @@ type ItemForm = {
   servesPeople: string;
   priceMasked: string;
   promotionalPriceMasked: string;
+  visibleInMenu: boolean;
 };
 
 type AdditionalForm = {
@@ -207,6 +212,8 @@ export default function ItemsCatalog({
     string | null
   >(null);
   const [newCategoryImageName, setNewCategoryImageName] = useState("");
+  const [newCategoryVisibleInMenu, setNewCategoryVisibleInMenu] =
+    useState(true);
   const [itemPendingDelete, setItemPendingDelete] = useState<MenuItem | null>(
     null,
   );
@@ -227,6 +234,8 @@ export default function ItemsCatalog({
   const [categoryDetailsImageName, setCategoryDetailsImageName] = useState("");
   const [categoryDetailsRemoveImage, setCategoryDetailsRemoveImage] =
     useState(false);
+  const [categoryDetailsVisibleInMenu, setCategoryDetailsVisibleInMenu] =
+    useState(true);
   const [renamingCategory, setRenamingCategory] = useState<string | null>(null);
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
   const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
@@ -281,6 +290,7 @@ export default function ItemsCatalog({
     servesPeople: "1",
     priceMasked: DEFAULT_PRICE_MASK,
     promotionalPriceMasked: "",
+    visibleInMenu: true,
   });
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
@@ -344,6 +354,7 @@ export default function ItemsCatalog({
       pricingType?: "UNIDADE" | "PESO";
       servesPeople?: number;
       imagePath?: string;
+      visibleInMenu?: boolean;
     }) => {
       const response = await fetch("/api/items", {
         method: "POST",
@@ -382,6 +393,7 @@ export default function ItemsCatalog({
         servesPeople: "1",
         priceMasked: DEFAULT_PRICE_MASK,
         promotionalPriceMasked: "",
+        visibleInMenu: true,
       });
       setSelectedImageFile(null);
       setPreviewImageUrl(null);
@@ -413,6 +425,7 @@ export default function ItemsCatalog({
         pricingType?: "UNIDADE" | "PESO";
         servesPeople?: number;
         imagePath?: string | null;
+        visibleInMenu?: boolean;
       };
     }) => {
       const response = await fetch(`/api/items/${itemId}`, {
@@ -608,7 +621,11 @@ export default function ItemsCatalog({
   });
 
   const createCategoryMutation = useMutation({
-    mutationFn: async (payload: { name: string; imagePath?: string }) => {
+    mutationFn: async (payload: {
+      name: string;
+      imagePath?: string;
+      visibleInMenu?: boolean;
+    }) => {
       const response = await fetch("/api/items/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -620,6 +637,7 @@ export default function ItemsCatalog({
           id: string;
           name: string;
           image_path: string | null;
+          visible_in_menu: boolean;
           image_url: string | null;
         };
         error?: string;
@@ -641,6 +659,7 @@ export default function ItemsCatalog({
         [name]: {
           imagePath: newCategory.image_path,
           imageUrl: newCategory.image_url,
+          visibleInMenu: newCategory.visible_in_menu,
         },
       }));
       setFormData((prev) => ({ ...prev, category: name }));
@@ -696,6 +715,7 @@ export default function ItemsCatalog({
       currentName: string;
       nextName: string;
       imagePath?: string | null;
+      visibleInMenu?: boolean;
     }) => {
       const response = await fetch("/api/items/categories", {
         method: "PATCH",
@@ -704,7 +724,7 @@ export default function ItemsCatalog({
       });
 
       const result = (await response.json().catch(() => ({}))) as {
-        data?: { from: string; to: string };
+        data?: { from: string; to: string; visibleInMenu: boolean };
         error?: string;
       };
 
@@ -817,11 +837,16 @@ export default function ItemsCatalog({
 
   const optimizeImage = async (
     file: File,
-    constraints: { maxWidth?: number; maxHeight?: number } = {},
+    constraints: {
+      maxWidth?: number;
+      maxHeight?: number;
+      targetMaxBytes?: number;
+    } = {},
   ) => {
     const bitmap = await createImageBitmap(file);
     const maxWidth = constraints.maxWidth ?? 960;
     const maxHeight = constraints.maxHeight ?? 960;
+    const targetMaxBytes = constraints.targetMaxBytes ?? 320 * 1024;
 
     const scale = Math.min(
       maxWidth / bitmap.width,
@@ -860,15 +885,14 @@ export default function ItemsCatalog({
         );
       });
 
-    let blob = await toBlobAtQuality(0.72);
+    let blob = await toBlobAtQuality(0.9);
 
-    // Limita tamanho para reduzir banda em uso mobile.
-    if (blob.size > 180 * 1024) {
-      blob = await toBlobAtQuality(0.62);
+    if (blob.size > targetMaxBytes) {
+      blob = await toBlobAtQuality(0.82);
     }
 
-    if (blob.size > 140 * 1024) {
-      blob = await toBlobAtQuality(0.52);
+    if (blob.size > targetMaxBytes) {
+      blob = await toBlobAtQuality(0.75);
     }
 
     return new File([blob], `${crypto.randomUUID()}.webp`, {
@@ -886,8 +910,9 @@ export default function ItemsCatalog({
 
     try {
       const optimized = await optimizeImage(file, {
-        maxWidth: 120,
-        maxHeight: 120,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        targetMaxBytes: 700 * 1024,
       });
       setSelectedImageFile(optimized);
       setPreviewImageUrl(URL.createObjectURL(optimized));
@@ -906,7 +931,11 @@ export default function ItemsCatalog({
     }
 
     try {
-      const optimized = await optimizeImage(file);
+      const optimized = await optimizeImage(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        targetMaxBytes: 450 * 1024,
+      });
       setNewCategoryImageFile(optimized);
       setNewCategoryPreviewImageUrl(URL.createObjectURL(optimized));
       setNewCategoryImageName(file.name);
@@ -923,7 +952,11 @@ export default function ItemsCatalog({
     }
 
     try {
-      const optimized = await optimizeImage(file);
+      const optimized = await optimizeImage(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        targetMaxBytes: 450 * 1024,
+      });
       setCategoryDetailsImageFile(optimized);
       setCategoryDetailsPreviewImageUrl(URL.createObjectURL(optimized));
       setCategoryDetailsImageName(file.name);
@@ -1146,6 +1179,7 @@ export default function ItemsCatalog({
     setCategoryDetailsPreviewImageUrl(null);
     setCategoryDetailsImageName("");
     setCategoryDetailsRemoveImage(false);
+    setCategoryDetailsVisibleInMenu(true);
   };
 
   const openCategoryDetailsModal = (category: string) => {
@@ -1156,6 +1190,7 @@ export default function ItemsCatalog({
     const categoryImage = categoryImages[category] ?? {
       imagePath: null,
       imageUrl: null,
+      visibleInMenu: true,
     };
 
     setCategoryDetailsTarget(category);
@@ -1164,6 +1199,7 @@ export default function ItemsCatalog({
     setCategoryDetailsPreviewImageUrl(categoryImage.imageUrl);
     setCategoryDetailsImageName("");
     setCategoryDetailsRemoveImage(false);
+    setCategoryDetailsVisibleInMenu(categoryImage.visibleInMenu);
   };
 
   const handleQuickRenameCategory = async (
@@ -1214,6 +1250,7 @@ export default function ItemsCatalog({
       const currentImage = prev[currentCategory] ?? {
         imagePath: null,
         imageUrl: null,
+        visibleInMenu: true,
       };
       delete next[currentCategory];
       next[nextCategory] = currentImage;
@@ -1265,6 +1302,7 @@ export default function ItemsCatalog({
       servesPeople: "1",
       priceMasked: DEFAULT_PRICE_MASK,
       promotionalPriceMasked: "",
+      visibleInMenu: true,
     });
     setSelectedImageFile(null);
     setPreviewImageUrl(null);
@@ -1281,6 +1319,7 @@ export default function ItemsCatalog({
     setNewCategoryImageFile(null);
     setNewCategoryPreviewImageUrl(null);
     setNewCategoryImageName("");
+    setNewCategoryVisibleInMenu(true);
     setOpenCreateCategory(true);
   };
 
@@ -1299,6 +1338,7 @@ export default function ItemsCatalog({
       servesPeople: "1",
       priceMasked: DEFAULT_PRICE_MASK,
       promotionalPriceMasked: "",
+      visibleInMenu: true,
     });
     setSelectedImageFile(null);
     setPreviewImageUrl(null);
@@ -1327,7 +1367,11 @@ export default function ItemsCatalog({
         imagePath = uploaded.imagePath;
       }
 
-      await createCategoryMutation.mutateAsync({ name, imagePath });
+      await createCategoryMutation.mutateAsync({
+        name,
+        imagePath,
+        visibleInMenu: newCategoryVisibleInMenu,
+      });
     } catch {
       return;
     }
@@ -1344,6 +1388,7 @@ export default function ItemsCatalog({
 
     const currentName = categoryDetailsTarget;
     const nextName = categoryDetailsName.trim();
+    const visibleInMenu = categoryDetailsVisibleInMenu;
 
     if (nextName.length < 2) {
       toast.error("Informe um nome de categoria válido.");
@@ -1353,7 +1398,8 @@ export default function ItemsCatalog({
     if (
       nextName === currentName &&
       !categoryDetailsImageFile &&
-      !categoryDetailsRemoveImage
+      !categoryDetailsRemoveImage &&
+      visibleInMenu === (categoryImages[currentName]?.visibleInMenu ?? true)
     ) {
       closeCategoryDetailsModal();
       return;
@@ -1411,14 +1457,22 @@ export default function ItemsCatalog({
 
       setCategoryImages((prev) => {
         const next = { ...prev };
-        const base = prev[currentName] ?? { imagePath: null, imageUrl: null };
+        const base = prev[currentName] ?? {
+          imagePath: null,
+          imageUrl: null,
+          visibleInMenu: true,
+        };
+        const baseVisibility = prev[currentName]?.visibleInMenu ?? true;
         const targetPath = imagePath === undefined ? base.imagePath : imagePath;
         const targetUrl = imageUrl === undefined ? base.imageUrl : imageUrl;
+        const targetVisibleInMenu =
+          visibleInMenu === undefined ? baseVisibility : visibleInMenu;
 
         delete next[currentName];
         next[nextName] = {
           imagePath: targetPath,
           imageUrl: targetUrl,
+          visibleInMenu: targetVisibleInMenu,
         };
         return next;
       });
@@ -1427,6 +1481,7 @@ export default function ItemsCatalog({
         currentName,
         nextName,
         ...(imagePath !== undefined ? { imagePath } : {}),
+        visibleInMenu,
       });
 
       closeCategoryDetailsModal();
@@ -1491,6 +1546,7 @@ export default function ItemsCatalog({
         item.promotional_price !== null
           ? numberToMaskedPrice(item.promotional_price)
           : "",
+      visibleInMenu: item.visible_in_menu,
     });
     setSelectedImageFile(null);
     setPreviewImageUrl(item.imageUrl);
@@ -1543,6 +1599,7 @@ export default function ItemsCatalog({
         pricingType: formData.pricingType,
         servesPeople,
         imagePath,
+        visibleInMenu: formData.visibleInMenu,
       });
     } catch {
       return;
@@ -1584,6 +1641,7 @@ export default function ItemsCatalog({
       normalizedPriceInCents !== originalPriceInCents ||
       normalizedPromotionalPriceInCents !== originalPromotionalPriceInCents ||
       normalizedServesPeople !== editingItem.serves_people ||
+      formData.visibleInMenu !== editingItem.visible_in_menu ||
       selectedImageFile !== null;
 
     if (!hasEditItemChanges) {
@@ -1634,6 +1692,7 @@ export default function ItemsCatalog({
           price,
           promotionalPrice,
           servesPeople,
+          visibleInMenu: formData.visibleInMenu,
           ...(imagePath !== undefined ? { imagePath } : {}),
         },
       });
@@ -1739,6 +1798,41 @@ export default function ItemsCatalog({
       await updateItemMutation.mutateAsync({
         itemId,
         payload: { category: nextCategory },
+      });
+    } catch {
+      setItems(previousItems);
+    }
+  };
+
+  const handleToggleItemVisibility = async (itemId: string) => {
+    if (!canManageItems || isAnyBusy) {
+      return;
+    }
+
+    const targetItem = items.find((item) => item.id === itemId);
+
+    if (!targetItem) {
+      return;
+    }
+
+    const nextVisibleInMenu = !targetItem.visible_in_menu;
+    const previousItems = items;
+
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              visible_in_menu: nextVisibleInMenu,
+            }
+          : item,
+      ),
+    );
+
+    try {
+      await updateItemMutation.mutateAsync({
+        itemId,
+        payload: { visibleInMenu: nextVisibleInMenu },
       });
     } catch {
       setItems(previousItems);
@@ -2304,9 +2398,11 @@ export default function ItemsCatalog({
 
     try {
       const printableCategories = categoriesToRender
+        .filter((category) => categoryImages[category]?.visibleInMenu ?? true)
         .map((category) => {
           const categoryItems = groupedByCategory[category] ?? [];
           const itemsForPrint = categoryItems
+            .filter((item) => item.visible_in_menu)
             .map((item) => {
               const basePrice = Number(item.price);
               const promoPrice =
@@ -2649,9 +2745,9 @@ export default function ItemsCatalog({
                   setIsTopActionsMenuOpen((current) => !current);
                 }}
                 className="inline-flex items-center gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--app-text)] transition hover:opacity-90"
-                aria-label="Abrir menu de + ITEM"
+                aria-label="Abrir menu de + item"
               >
-                + ITEM
+                Item
                 <ChevronDown className="h-4 w-4" />
               </button>
 
@@ -2720,6 +2816,7 @@ export default function ItemsCatalog({
           const categoryImage = categoryImages[category] ?? {
             imagePath: null,
             imageUrl: null,
+            visibleInMenu: true,
           };
           const showDropBefore =
             draggingCategory !== null && categoryDropIndex === renderIndex;
@@ -2769,9 +2866,15 @@ export default function ItemsCatalog({
                       alt={`Imagem da categoria ${category}`}
                       fill
                       sizes="64px"
-                      quality={55}
+                      quality={75}
                     />
                   </div>
+                ) : null}
+
+                {canManageItems && !categoryImage.visibleInMenu ? (
+                  <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                    Oculta no cardápio
+                  </span>
                 ) : null}
 
                 {editingCategory === category ? (
@@ -2948,7 +3051,7 @@ export default function ItemsCatalog({
                     width={1200}
                     height={480}
                     sizes="(max-width: 640px) 100vw, 1200px"
-                    quality={60}
+                    quality={80}
                     className="h-full w-full"
                   />
                 </div>
@@ -3125,6 +3228,7 @@ export default function ItemsCatalog({
                       !canManageItems
                         ? "transition hover:bg-[var(--app-surface-muted)]"
                         : "",
+                      !item.visible_in_menu ? "opacity-80" : "",
                       draggingItemId === item.id
                         ? "bg-white opacity-95 ring-2 ring-[var(--app-primary)]/45"
                         : "",
@@ -3159,6 +3263,12 @@ export default function ItemsCatalog({
                           <Text size="sm" className="mt-2 font-semibold">
                             Serve {item.serves_people} pessoas
                           </Text>
+                        ) : null}
+
+                        {canManageItems && !item.visible_in_menu ? (
+                          <span className="mt-2 inline-flex rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                            Oculto no cardápio
+                          </span>
                         ) : null}
 
                         {item.promotional_price !== null &&
@@ -3202,7 +3312,7 @@ export default function ItemsCatalog({
                             fill
                             draggable={false}
                             sizes="120px"
-                            quality={60}
+                            quality={80}
                             className="object-cover"
                           />
                         </div>
@@ -3232,6 +3342,20 @@ export default function ItemsCatalog({
                           className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Pencil className="h-3.5 w-3.5" /> Editar
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isAnyBusy}
+                          onClick={() => void handleToggleItemVisibility(item.id)}
+                          className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {item.visible_in_menu ? (
+                            <EyeOff className="h-3.5 w-3.5" />
+                          ) : (
+                            <Eye className="h-3.5 w-3.5" />
+                          )}
+                          {item.visible_in_menu ? "Desativar" : "Ativar"}
                         </button>
 
                         <button
@@ -3414,6 +3538,21 @@ export default function ItemsCatalog({
               rows={3}
             />
           </FormLabel>
+
+          <label className="flex items-center gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)]">
+            <input
+              type="checkbox"
+              checked={formData.visibleInMenu}
+              disabled={isCreateBusy || isUploadingImage}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  visibleInMenu: event.target.checked,
+                }))
+              }
+            />
+            <span>Exibir no cardápio do cliente</span>
+          </label>
 
           <FormLabel>
             <span>Imagem</span>
@@ -3615,6 +3754,21 @@ export default function ItemsCatalog({
               rows={3}
             />
           </FormLabel>
+
+          <label className="flex items-center gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)]">
+            <input
+              type="checkbox"
+              checked={formData.visibleInMenu}
+              disabled={isEditBusy || isUploadingImage}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  visibleInMenu: event.target.checked,
+                }))
+              }
+            />
+            <span>Exibir no cardápio do cliente</span>
+          </label>
 
           <FormLabel>
             <span>Imagem</span>
@@ -4026,7 +4180,7 @@ export default function ItemsCatalog({
                   fill
                   draggable={false}
                   sizes="(max-width: 640px) 100vw, 640px"
-                  quality={60}
+                  quality={85}
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-sm text-[var(--app-muted)]">
@@ -4217,6 +4371,7 @@ export default function ItemsCatalog({
           setNewCategoryImageFile(null);
           setNewCategoryPreviewImageUrl(null);
           setNewCategoryImageName("");
+          setNewCategoryVisibleInMenu(true);
         }}
         panelClassName="max-h-[calc(100dvh-7rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[82dvh] sm:max-w-md sm:p-5"
       >
@@ -4233,6 +4388,7 @@ export default function ItemsCatalog({
               setNewCategoryImageFile(null);
               setNewCategoryPreviewImageUrl(null);
               setNewCategoryImageName("");
+              setNewCategoryVisibleInMenu(true);
             }}
             className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Fechar modal"
@@ -4250,6 +4406,18 @@ export default function ItemsCatalog({
               onChange={(event) => setNewCategoryName(event.target.value)}
             />
           </FormLabel>
+
+          <label className="flex items-center gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)]">
+            <input
+              type="checkbox"
+              checked={newCategoryVisibleInMenu}
+              disabled={isCreateCategoryBusy || isUploadingImage}
+              onChange={(event) =>
+                setNewCategoryVisibleInMenu(event.target.checked)
+              }
+            />
+            <span>Exibir esta categoria no cardápio do cliente</span>
+          </label>
 
           <FormLabel>
             <span>Imagem da categoria (opcional)</span>
@@ -4338,6 +4506,18 @@ export default function ItemsCatalog({
               onChange={(event) => setCategoryDetailsName(event.target.value)}
             />
           </FormLabel>
+
+          <label className="flex items-center gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)]">
+            <input
+              type="checkbox"
+              checked={categoryDetailsVisibleInMenu}
+              disabled={Boolean(renamingCategory) || isUploadingImage}
+              onChange={(event) =>
+                setCategoryDetailsVisibleInMenu(event.target.checked)
+              }
+            />
+            <span>Exibir esta categoria no cardápio do cliente</span>
+          </label>
 
           <FormLabel>
             <span>Imagem da categoria (opcional)</span>

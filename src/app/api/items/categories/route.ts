@@ -17,6 +17,7 @@ const BUCKET = "menu-item-images";
 const createCategorySchema = z.object({
   name: z.string().trim().min(2).max(60),
   imagePath: z.string().trim().min(1).max(500).optional(),
+  visibleInMenu: z.boolean().optional(),
 });
 
 const deleteCategorySchema = z.object({
@@ -31,19 +32,26 @@ const renameCategorySchema = z.object({
   currentName: z.string().trim().min(2).max(60),
   nextName: z.string().trim().min(2).max(60),
   imagePath: z.string().trim().min(1).max(500).nullable().optional(),
+  visibleInMenu: z.boolean().optional(),
 });
 
 const UNCATEGORIZED_CATEGORY = "Sem Categoria";
 
 async function withSignedCategoryImage(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  row: { name: string; image_path: string | null; sort_order: number | null },
+  row: {
+    name: string;
+    image_path: string | null;
+    sort_order: number | null;
+    visible_in_menu: boolean;
+  },
 ) {
   if (!row.image_path) {
     return {
       name: row.name,
       sort_order: row.sort_order,
       image_path: null,
+      visible_in_menu: row.visible_in_menu,
       image_url: null,
     };
   }
@@ -56,6 +64,7 @@ async function withSignedCategoryImage(
     name: row.name,
     sort_order: row.sort_order,
     image_path: row.image_path,
+    visible_in_menu: row.visible_in_menu,
     image_url: signedData?.signedUrl ?? null,
   };
 }
@@ -134,7 +143,7 @@ export async function GET() {
 
   const { data: categoryRows } = await supabase
     .from("menu_categories")
-    .select("name, sort_order, image_path")
+    .select("name, sort_order, image_path, visible_in_menu")
     .eq("tenant_id", tenantId)
     .eq("active", true)
     .order("sort_order", { ascending: true })
@@ -150,6 +159,7 @@ export async function GET() {
     name: string;
     sort_order: number | null;
     image_path: string | null;
+    visible_in_menu: boolean;
   }>;
 
   const fromCategories = typedCategoryRows
@@ -169,6 +179,7 @@ export async function GET() {
     name,
     sort_order: null,
     image_path: null,
+    visible_in_menu: true,
     image_url: null,
   }));
 
@@ -199,6 +210,7 @@ export async function POST(request: Request) {
 
   const name = parsed.data.name;
   const imagePath = parsed.data.imagePath ?? null;
+  const visibleInMenu = parsed.data.visibleInMenu ?? true;
 
   const { data: lastCategory } = await supabase
     .from("menu_categories")
@@ -211,11 +223,34 @@ export async function POST(request: Request) {
 
   const nextSortOrder = (lastCategory?.sort_order ?? -1) + 1;
 
-  const { data, error } = await supabase
+  const baseInsertPayload = {
+    tenant_id: tenantId,
+    name,
+    sort_order: nextSortOrder,
+    image_path: imagePath,
+    visible_in_menu: visibleInMenu,
+  };
+
+  const insertWithVisibility = {
+    ...baseInsertPayload,
+    visible_in_menu_updated_at: new Date().toISOString(),
+  };
+
+  let { data, error } = await supabase
     .from("menu_categories")
-    .insert({ tenant_id: tenantId, name, sort_order: nextSortOrder, image_path: imagePath })
-    .select("id, name, image_path")
+    .insert(insertWithVisibility)
+    .select("id, name, image_path, visible_in_menu")
     .single();
+
+  if (error && error.code === "42703") {
+    const retry = await supabase
+      .from("menu_categories")
+      .insert(baseInsertPayload)
+      .select("id, name, image_path, visible_in_menu")
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     if (error.code === "23505") {
@@ -229,11 +264,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Falha ao criar categoria" }, { status: 500 });
   }
 
-  const typedData = data as { id: string; name: string; image_path: string | null };
+  const typedData = data as {
+    id: string;
+    name: string;
+    image_path: string | null;
+    visible_in_menu: boolean;
+  };
   const signed = await withSignedCategoryImage(supabase, {
     name: typedData.name,
     image_path: typedData.image_path,
     sort_order: nextSortOrder,
+    visible_in_menu: typedData.visible_in_menu,
   });
 
   return NextResponse.json(
@@ -242,6 +283,7 @@ export async function POST(request: Request) {
         id: typedData.id,
         name: typedData.name,
         image_path: typedData.image_path,
+        visible_in_menu: typedData.visible_in_menu,
         image_url: signed.image_url,
       },
     },
@@ -269,6 +311,7 @@ export async function PATCH(request: Request) {
     const currentName = renameParsed.data.currentName;
     const nextName = renameParsed.data.nextName;
     const imagePath = renameParsed.data.imagePath;
+    const visibleInMenu = renameParsed.data.visibleInMenu;
 
     if (currentName === UNCATEGORIZED_CATEGORY || nextName === UNCATEGORIZED_CATEGORY) {
       return NextResponse.json(
@@ -277,8 +320,14 @@ export async function PATCH(request: Request) {
       );
     }
 
-    if (currentName === nextName && imagePath === undefined) {
-      return NextResponse.json({ data: { from: currentName, to: nextName } });
+    if (currentName === nextName && imagePath === undefined && visibleInMenu === undefined) {
+      return NextResponse.json({
+        data: {
+          from: currentName,
+          to: nextName,
+          visibleInMenu: visibleInMenu ?? true,
+        },
+      });
     }
 
     if (currentName !== nextName) {
@@ -322,20 +371,39 @@ export async function PATCH(request: Request) {
     }
 
     if (hasCategoryRow) {
-      const categoryUpdatePayload: Record<string, string | null> = {
+      const categoryUpdatePayload: Record<string, string | boolean | null> = {
         name: nextName,
       };
 
       if (imagePath !== undefined) {
         categoryUpdatePayload.image_path = imagePath;
       }
+      if (visibleInMenu !== undefined) {
+        categoryUpdatePayload.visible_in_menu = visibleInMenu;
+        categoryUpdatePayload.visible_in_menu_updated_at = new Date().toISOString();
+      }
 
-      const { error: updateCategoryError } = await supabase
+      const fallbackCategoryUpdatePayload: Record<string, string | boolean | null> = {
+        ...categoryUpdatePayload,
+      };
+      delete fallbackCategoryUpdatePayload.visible_in_menu_updated_at;
+
+      let { error: updateCategoryError } = await supabase
         .from("menu_categories")
         .update(categoryUpdatePayload)
         .eq("tenant_id", tenantId)
         .eq("active", true)
         .eq("name", currentName);
+
+      if (updateCategoryError && updateCategoryError.code === "42703") {
+        const retry = await supabase
+          .from("menu_categories")
+          .update(fallbackCategoryUpdatePayload)
+          .eq("tenant_id", tenantId)
+          .eq("active", true)
+          .eq("name", currentName);
+        updateCategoryError = retry.error;
+      }
 
       if (updateCategoryError) {
         if (updateCategoryError.code === "23505") {
@@ -355,18 +423,33 @@ export async function PATCH(request: Request) {
 
       const nextSortOrder = (lastCategory?.sort_order ?? -1) + 1;
 
-      const { error: createCategoryError } = await supabase
+      const baseUpsertPayload = {
+        tenant_id: tenantId,
+        name: nextName,
+        active: true,
+        sort_order: nextSortOrder,
+        image_path: imagePath ?? null,
+        visible_in_menu: visibleInMenu ?? true,
+      };
+
+      const upsertWithVisibility = {
+        ...baseUpsertPayload,
+        visible_in_menu_updated_at: new Date().toISOString(),
+      };
+
+      let { error: createCategoryError } = await supabase
         .from("menu_categories")
         .upsert(
-          {
-            tenant_id: tenantId,
-            name: nextName,
-            active: true,
-            sort_order: nextSortOrder,
-            image_path: imagePath ?? null,
-          },
+          upsertWithVisibility,
           { onConflict: "tenant_id,name" },
         );
+
+      if (createCategoryError && createCategoryError.code === "42703") {
+        const retry = await supabase
+          .from("menu_categories")
+          .upsert(baseUpsertPayload, { onConflict: "tenant_id,name" });
+        createCategoryError = retry.error;
+      }
 
       if (createCategoryError) {
         if (createCategoryError.code === "23505") {
@@ -392,7 +475,9 @@ export async function PATCH(request: Request) {
       }
     }
 
-    return NextResponse.json({ data: { from: currentName, to: nextName } });
+    return NextResponse.json({
+      data: { from: currentName, to: nextName, visibleInMenu: visibleInMenu ?? true },
+    });
   }
 
   const reorderParsed = reorderCategoriesSchema.safeParse(body);
@@ -405,11 +490,24 @@ export async function PATCH(request: Request) {
     new Set(reorderParsed.data.categories.map((category) => category.trim()).filter(Boolean)),
   );
 
+  const { data: existingCategories } = await supabase
+    .from("menu_categories")
+    .select("name, visible_in_menu")
+    .eq("tenant_id", tenantId)
+    .eq("active", true);
+
+  const visibilityByName = new Map(
+    ((existingCategories ?? []) as Array<{ name: string; visible_in_menu: boolean }>).map(
+      (row) => [row.name, row.visible_in_menu],
+    ),
+  );
+
   const payload = uniqueCategories.map((name, index) => ({
     tenant_id: tenantId,
     name,
     sort_order: index,
     active: true,
+    visible_in_menu: visibilityByName.get(name) ?? true,
   }));
 
   const { error } = await supabase

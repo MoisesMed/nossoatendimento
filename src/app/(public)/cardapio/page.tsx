@@ -13,6 +13,7 @@ type MenuItem = {
   pricing_type: "UNIDADE" | "PESO";
   serves_people: number;
   active: boolean;
+  visible_in_menu: boolean;
   image_path: string | null;
   imageUrl: string | null;
 };
@@ -31,6 +32,7 @@ type MenuAdditional = {
 type CategoryImageData = {
   imagePath: string | null;
   imageUrl: string | null;
+  visibleInMenu: boolean;
 };
 
 const PUBLIC_TENANT_SLUG = "labavetteresto";
@@ -80,7 +82,7 @@ export default async function CardapioPage() {
     const { data: itemsData } = await authSupabase
       .from("menu_items")
       .select(
-        "id, code, name, category, description, price, promotional_price, pricing_type, serves_people, active, image_path",
+        "id, code, name, category, description, price, promotional_price, pricing_type, serves_people, active, visible_in_menu, image_path",
       )
       .eq("tenant_id", tenant.id)
       .eq("active", true)
@@ -89,7 +91,7 @@ export default async function CardapioPage() {
 
     const { data: categoriesData } = await authSupabase
       .from("menu_categories")
-      .select("name, image_path")
+      .select("name, image_path, visible_in_menu")
       .eq("tenant_id", tenant.id)
       .eq("active", true)
       .order("sort_order", { ascending: true })
@@ -134,6 +136,7 @@ export default async function CardapioPage() {
     const typedCategories = (categoriesData ?? []) as Array<{
       name: string;
       image_path: string | null;
+      visible_in_menu: boolean;
     }>;
 
     const categorySignedEntries = await Promise.all(
@@ -146,6 +149,7 @@ export default async function CardapioPage() {
         return {
           name: category.name,
           imagePath: category.image_path,
+          visibleInMenu: category.visible_in_menu,
           imageUrl,
         };
       }),
@@ -162,6 +166,7 @@ export default async function CardapioPage() {
       acc[normalizedName] = {
         imagePath: category.imagePath,
         imageUrl: category.imageUrl,
+        visibleInMenu: category.visibleInMenu,
       };
 
       return acc;
@@ -274,6 +279,7 @@ export default async function CardapioPage() {
       pricing_type: row.pricing_type ?? "UNIDADE",
       serves_people: row.serves_people,
       active: row.active,
+      visible_in_menu: true,
       image_path: row.image_path,
       imageUrl: itemImageMap.get(row.id) ?? null,
     }));
@@ -334,6 +340,7 @@ export default async function CardapioPage() {
       acc[entry.categoryName] = {
         imagePath: entry.imagePath,
         imageUrl: entry.imageUrl,
+        visibleInMenu: true,
       };
       return acc;
     }, {});

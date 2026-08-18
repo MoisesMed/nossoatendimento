@@ -22,6 +22,7 @@ type ItemRow = {
   promotional_price: number | null;
   pricing_type: "UNIDADE" | "PESO";
   active: boolean;
+  visible_in_menu: boolean;
   image_path: string | null;
   category: string;
   serves_people: number;
@@ -42,6 +43,7 @@ const updateItemSchema = z.object({
   pricingType: z.enum(["UNIDADE", "PESO"]).optional(),
   servesPeople: z.number().int().min(1).max(99).optional(),
   imagePath: z.string().trim().min(1).max(500).nullable().optional(),
+  visibleInMenu: z.boolean().optional(),
 });
 
 async function withSignedImage(supabase: Awaited<ReturnType<typeof createClient>>, row: ItemRow) {
@@ -172,20 +174,44 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       : {}),
     ...(parsed.data.servesPeople !== undefined ? { serves_people: parsed.data.servesPeople } : {}),
     ...(parsed.data.imagePath !== undefined ? { image_path: parsed.data.imagePath } : {}),
+    ...(parsed.data.visibleInMenu !== undefined
+      ? {
+        visible_in_menu: parsed.data.visibleInMenu,
+        visible_in_menu_updated_at: new Date().toISOString(),
+      }
+      : {}),
   };
+
+  const fallbackPayload = {
+    ...payload,
+  };
+  delete fallbackPayload.visible_in_menu_updated_at;
 
   if (Object.keys(payload).length === 0) {
     return NextResponse.json({ error: "Nada para atualizar" }, { status: 400 });
   }
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("menu_items")
     .update(payload)
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .eq("active", true)
-    .select("id, code, name, description, price, promotional_price, pricing_type, active, image_path, category, serves_people")
+    .select("id, code, name, description, price, promotional_price, pricing_type, active, visible_in_menu, image_path, category, serves_people")
     .single();
+
+  if (error && error.code === "42703") {
+    const retry = await supabase
+      .from("menu_items")
+      .update(fallbackPayload)
+      .eq("id", id)
+      .eq("tenant_id", tenantId)
+      .eq("active", true)
+      .select("id, code, name, description, price, promotional_price, pricing_type, active, visible_in_menu, image_path, category, serves_people")
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     if (error.code === "23505") {
