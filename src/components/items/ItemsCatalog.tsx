@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import * as QRCode from "qrcode";
 import {
   ChevronDown,
   GripVertical,
@@ -214,6 +215,7 @@ export default function ItemsCatalog({
   const [newCategoryImageName, setNewCategoryImageName] = useState("");
   const [newCategoryVisibleInMenu, setNewCategoryVisibleInMenu] =
     useState(true);
+  const [busyItemIds, setBusyItemIds] = useState<string[]>([]);
   const [itemPendingDelete, setItemPendingDelete] = useState<MenuItem | null>(
     null,
   );
@@ -778,6 +780,7 @@ export default function ItemsCatalog({
   const isCreateCategoryBusy = createCategoryMutation.isPending;
   const isDeleting = removeItemMutation.isPending;
   const isUploadingImage = uploadImageMutation.isPending;
+  const isAnyItemBusy = busyItemIds.length > 0;
   const isAnyBusy =
     isCreateBusy ||
     isEditBusy ||
@@ -789,7 +792,8 @@ export default function ItemsCatalog({
     isCreateAdditionalBusy ||
     isEditAdditionalBusy ||
     isDeleteAdditionalBusy ||
-    Boolean(renamingCategory);
+    Boolean(renamingCategory) ||
+    isAnyItemBusy;
   const canManageItems = userRole === "DONO" || userRole === "ATENDENTE";
   const canReorderCategories = canManageItems && activeCategoryFilter === "ALL";
 
@@ -1676,6 +1680,10 @@ export default function ItemsCatalog({
     try {
       let imagePath: string | null | undefined;
 
+      setBusyItemIds((prev) =>
+        prev.includes(editingItem.id) ? prev : [...prev, editingItem.id],
+      );
+
       if (selectedImageFile) {
         const uploaded =
           await uploadImageMutation.mutateAsync(selectedImageFile);
@@ -1698,6 +1706,8 @@ export default function ItemsCatalog({
       });
     } catch {
       return;
+    } finally {
+      setBusyItemIds((prev) => prev.filter((id) => id !== editingItem.id));
     }
   };
 
@@ -1716,11 +1726,16 @@ export default function ItemsCatalog({
 
     const deletingItemId = itemPendingDelete.id;
     setItemPendingDelete(null);
+    setBusyItemIds((prev) =>
+      prev.includes(deletingItemId) ? prev : [...prev, deletingItemId],
+    );
 
     try {
       await removeItemMutation.mutateAsync(deletingItemId);
     } catch {
       return;
+    } finally {
+      setBusyItemIds((prev) => prev.filter((id) => id !== deletingItemId));
     }
   };
 
@@ -1754,6 +1769,9 @@ export default function ItemsCatalog({
     setDraggingItemId(null);
     setDragOverCategory(null);
     cleanupDragArtifacts();
+    setBusyItemIds((prev) =>
+      prev.includes(draggedItem.id) ? prev : [...prev, draggedItem.id],
+    );
 
     try {
       await updateItemMutation.mutateAsync({
@@ -1763,6 +1781,8 @@ export default function ItemsCatalog({
     } catch {
       setItems(previousItems);
       return;
+    } finally {
+      setBusyItemIds((prev) => prev.filter((id) => id !== draggedItem.id));
     }
   };
 
@@ -1793,6 +1813,9 @@ export default function ItemsCatalog({
           : item,
       ),
     );
+    setBusyItemIds((prev) =>
+      prev.includes(itemId) ? prev : [...prev, itemId],
+    );
 
     try {
       await updateItemMutation.mutateAsync({
@@ -1801,6 +1824,8 @@ export default function ItemsCatalog({
       });
     } catch {
       setItems(previousItems);
+    } finally {
+      setBusyItemIds((prev) => prev.filter((id) => id !== itemId));
     }
   };
 
@@ -1828,6 +1853,9 @@ export default function ItemsCatalog({
           : item,
       ),
     );
+    setBusyItemIds((prev) =>
+      prev.includes(itemId) ? prev : [...prev, itemId],
+    );
 
     try {
       await updateItemMutation.mutateAsync({
@@ -1836,6 +1864,65 @@ export default function ItemsCatalog({
       });
     } catch {
       setItems(previousItems);
+    } finally {
+      setBusyItemIds((prev) => prev.filter((id) => id !== itemId));
+    }
+  };
+
+  const handleHideCategoryItems = async (category: string) => {
+    if (!canManageItems || isAnyBusy) {
+      return;
+    }
+
+    const categoryItems = items.filter(
+      (item) => (item.category?.trim() || UNCATEGORIZED_CATEGORY) === category,
+    );
+    const visibleItems = categoryItems.filter((item) => item.visible_in_menu);
+
+    if (visibleItems.length === 0) {
+      return;
+    }
+
+    const previousItems = items;
+    const itemIds = visibleItems.map((item) => item.id);
+
+    setItems((prev) =>
+      prev.map((item) =>
+        (item.category?.trim() || UNCATEGORIZED_CATEGORY) === category
+          ? {
+              ...item,
+              visible_in_menu: false,
+            }
+          : item,
+      ),
+    );
+    setBusyItemIds((prev) => {
+      const next = new Set(prev);
+      itemIds.forEach((id) => next.add(id));
+      return Array.from(next);
+    });
+
+    try {
+      await Promise.all(
+        visibleItems.map(async (item) => {
+          const response = await fetch(`/api/items/${item.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ visibleInMenu: false }),
+          });
+
+          if (!response.ok) {
+            const result = (await response.json().catch(() => ({}))) as {
+              error?: string;
+            };
+            throw new Error(result.error ?? "Falha ao desativar item");
+          }
+        }),
+      );
+    } catch {
+      setItems(previousItems);
+    } finally {
+      setBusyItemIds((prev) => prev.filter((id) => !itemIds.includes(id)));
     }
   };
 
@@ -2321,6 +2408,146 @@ export default function ItemsCatalog({
     ? `https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(publicMenuUrl)}`
     : "";
 
+  const printQrCodes = async (mode: "single" | "a4") => {
+    if (!publicMenuUrl) {
+      throw new Error("Não foi possível gerar o link do cardápio.");
+    }
+
+    const qrDataUrl = await QRCode.toDataURL(publicMenuUrl, {
+      width: 700,
+      margin: 1,
+      errorCorrectionLevel: "M",
+    });
+
+    const repeatedCards = mode === "a4" ? Array.from({ length: 6 }) : [null];
+    const pageTitle =
+      mode === "a4" ? "Folha A4 de QR Codes" : "QR Code do Cardápio";
+    const qrCardClass = mode === "a4" ? "qr-card" : "single-card";
+    const sheetClass = mode === "a4" ? "sheet" : "single-layout";
+
+    const html = `
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>${pageTitle}</title>
+          <style>
+            @page {
+              size: ${mode === "a4" ? "A4" : "auto"};
+              margin: ${mode === "a4" ? "10mm" : "18mm"};
+            }
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              font-family: Arial, sans-serif;
+              color: #111827;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .single-layout {
+              min-height: 100vh;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 24px;
+            }
+            .single-card {
+              text-align: center;
+              max-width: 360px;
+            }
+            .sheet {
+              display: grid;
+              grid-template-columns: repeat(2, 1fr);
+              gap: 6mm;
+              align-content: start;
+            }
+            .qr-card {
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              min-height: 72mm;
+              padding: 4mm 3mm;
+              border: 1px dashed #cbd5e1;
+              border-radius: 6px;
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+            .title {
+              font-size: ${mode === "a4" ? "12px" : "18px"};
+              font-weight: 700;
+              margin-bottom: 10px;
+            }
+            .subtitle {
+              font-size: ${mode === "a4" ? "10px" : "13px"};
+              color: #4b5563;
+              margin-bottom: 12px;
+            }
+            .qr {
+              width: ${mode === "a4" ? "54mm" : "260px"};
+              height: ${mode === "a4" ? "54mm" : "260px"};
+              border: 1px solid #e5e7eb;
+              padding: 3mm;
+              border-radius: 8px;
+              background: #fff;
+              display: block;
+            }
+          </style>
+        </head>
+        <body>
+          <main class="${sheetClass}">
+            ${repeatedCards
+              .map(
+                () => `
+                  <section class="${qrCardClass}">
+                    <div class="title">Cardápio Digital</div>
+                    <div class="subtitle">Escaneie para abrir o cardápio</div>
+                    <img class="qr" src="${qrDataUrl}" alt="QR Code do cardápio" />
+                  </section>
+                `,
+              )
+              .join("")}
+          </main>
+        </body>
+      </html>
+    `;
+
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.visibility = "hidden";
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.srcdoc = html;
+    document.body.appendChild(iframe);
+
+    await new Promise<void>((resolve) => {
+      iframe.onload = () => resolve();
+    });
+
+    await new Promise<void>((resolve) => {
+      window.setTimeout(() => resolve(), 250);
+    });
+
+    const printWindow = iframe.contentWindow;
+    if (!printWindow) {
+      document.body.removeChild(iframe);
+      throw new Error("Não foi possível abrir a janela de impressão.");
+    }
+
+    printWindow.focus();
+    printWindow.print();
+
+    window.setTimeout(() => {
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    }, 1000);
+  };
+
   const handleOpenQrModal = () => {
     if (!canManageItems) {
       return;
@@ -2331,57 +2558,30 @@ export default function ItemsCatalog({
     setOpenQrModal(true);
   };
 
-  const handlePrintQrCode = () => {
-    if (!publicMenuUrl) {
-      toast.error("Não foi possível gerar o link do cardápio.");
-      return;
+  const handlePrintQrCode = async () => {
+    try {
+      await printQrCodes("single");
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.error("Não foi possível imprimir o QR.");
     }
+  };
 
-    const printWindow = window.open(
-      "",
-      "_blank",
-      "noopener,noreferrer,width=480,height=720",
-    );
+  const handlePrintQrA4 = async () => {
+    try {
+      await printQrCodes("a4");
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+        return;
+      }
 
-    if (!printWindow) {
-      toast.error("Não foi possível abrir a janela de impressão.");
-      return;
+      toast.error("Não foi possível imprimir a folha A4.");
     }
-
-    const html = `
-      <!doctype html>
-      <html lang="pt-BR">
-        <head>
-          <meta charset="utf-8" />
-          <title>QR Code do Cardápio</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
-            .container { text-align: center; }
-            .title { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
-            .subtitle { font-size: 13px; color: #4b5563; margin-bottom: 16px; }
-            .qr { width: 260px; height: 260px; border: 1px solid #e5e7eb; padding: 8px; border-radius: 8px; }
-            .url { margin-top: 14px; font-size: 12px; word-break: break-all; color: #374151; }
-          </style>
-        </head>
-        <body>
-          <main class="container">
-            <div class="title">Cardápio Digital</div>
-            <div class="subtitle">Escaneie para abrir o cardápio</div>
-            <img class="qr" src="${qrCodeImageUrl}" alt="QR Code do cardápio" />
-            <div class="url">${publicMenuUrl}</div>
-          </main>
-          <script>
-            window.addEventListener('load', () => {
-              window.print();
-            });
-          </script>
-        </body>
-      </html>
-    `;
-
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
   };
 
   const handlePrintSimpleMenu = () => {
@@ -2644,7 +2844,7 @@ export default function ItemsCatalog({
           />
         </label>
 
-        <div className="overflow-x-auto pb-1">
+        <div className="overflow-x-auto pb-2">
           <div className="flex w-max min-w-full items-center gap-2">
             <button
               type="button"
@@ -3037,6 +3237,18 @@ export default function ItemsCatalog({
                         >
                           Adicionar item
                         </button>
+
+                        <button
+                          type="button"
+                          disabled={isAnyBusy}
+                          onClick={() => {
+                            setOpenCategoryActionsMenu(null);
+                            void handleHideCategoryItems(category);
+                          }}
+                          className="block w-full rounded-md px-2 py-2 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Esconder todos os itens
+                        </button>
                       </div>
                     ) : null}
                   </div>
@@ -3114,267 +3326,307 @@ export default function ItemsCatalog({
                     : "",
                 ].join(" ")}
               >
-                {categoryItems.map((item) => (
-                  <article
-                    key={item.id}
-                    draggable={canManageItems}
-                    onClick={() => {
-                      if (!canManageItems) {
-                        setPreviewItem(item);
-                      }
-                    }}
-                    onKeyDown={(event) => {
-                      if (canManageItems) {
-                        return;
-                      }
+                {categoryItems.map((item) => {
+                  const isItemCardBusy = busyItemIds.includes(item.id);
 
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        setPreviewItem(item);
-                      }
-                    }}
-                    role={!canManageItems ? "button" : undefined}
-                    tabIndex={!canManageItems ? 0 : undefined}
-                    onDragStart={(event) => {
-                      const element = event.currentTarget;
-                      setDraggingItemId(item.id);
-                      event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData("text/plain", item.id);
-
-                      if (dragPreviewRef.current) {
-                        dragPreviewRef.current.remove();
-                      }
-
-                      const bounds = element.getBoundingClientRect();
-                      const pointerX =
-                        event.clientX || bounds.left + bounds.width / 2;
-                      const pointerY = event.clientY || bounds.top + 24;
-                      dragOffsetRef.current = {
-                        x: pointerX - bounds.left,
-                        y: pointerY - bounds.top,
-                      };
-
-                      const preview = element.cloneNode(true) as HTMLElement;
-                      preview.style.position = "fixed";
-                      preview.style.left = `${bounds.left}px`;
-                      preview.style.top = `${bounds.top}px`;
-                      preview.style.width = `${bounds.width}px`;
-                      preview.style.height = `${bounds.height}px`;
-                      preview.style.pointerEvents = "none";
-                      preview.style.opacity = "1";
-                      preview.style.transform = "none";
-                      preview.style.backgroundColor = "#ffffff";
-                      preview.style.border = "1px solid var(--app-border)";
-                      preview.style.borderRadius = "0.375rem";
-                      preview.style.boxShadow =
-                        "0 18px 42px rgba(0, 0, 0, 0.28)";
-                      preview.style.zIndex = "9999";
-                      document.body.appendChild(preview);
-
-                      dragPreviewRef.current = preview;
-
-                      if (!transparentDragImageRef.current) {
-                        const transparentPixel = document.createElement("img");
-                        transparentPixel.src =
-                          "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
-                        transparentDragImageRef.current = transparentPixel;
-                      }
-
-                      if (transparentDragImageRef.current) {
-                        event.dataTransfer.setDragImage(
-                          transparentDragImageRef.current,
-                          0,
-                          0,
-                        );
-                      }
-
-                      if (dragMoveListenerRef.current) {
-                        window.removeEventListener(
-                          "dragover",
-                          dragMoveListenerRef.current,
-                        );
-                      }
-
-                      dragMoveListenerRef.current = (
-                        moveEvent: globalThis.DragEvent,
-                      ) => {
-                        if (!dragPreviewRef.current) {
+                  return (
+                    <article
+                      key={item.id}
+                      draggable={canManageItems && !isItemCardBusy}
+                      aria-busy={isItemCardBusy}
+                      onClick={() => {
+                        if (!canManageItems && !isItemCardBusy) {
+                          setPreviewItem(item);
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        if (canManageItems || isItemCardBusy) {
                           return;
                         }
 
-                        const left =
-                          moveEvent.clientX - dragOffsetRef.current.x;
-                        const top = moveEvent.clientY - dragOffsetRef.current.y;
-                        dragPreviewRef.current.style.left = `${left}px`;
-                        dragPreviewRef.current.style.top = `${top}px`;
-                      };
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setPreviewItem(item);
+                        }
+                      }}
+                      role={!canManageItems ? "button" : undefined}
+                      tabIndex={!canManageItems ? 0 : undefined}
+                      onDragStart={(event) => {
+                        if (isItemCardBusy) {
+                          event.preventDefault();
+                          return;
+                        }
 
-                      window.addEventListener(
-                        "dragover",
-                        dragMoveListenerRef.current,
-                      );
-                    }}
-                    onDragEnd={() => {
-                      cleanupDragArtifacts();
+                        const element = event.currentTarget;
+                        setDraggingItemId(item.id);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", item.id);
 
-                      setDraggingItemId(null);
-                      setDragOverCategory(null);
-                    }}
-                    className={[
-                      "flex h-full flex-col border-t border-[var(--app-border)] bg-white px-0 py-3 last:border-b sm:py-4 md:rounded-md md:border md:px-2 md:shadow-[0_1px_4px_rgba(15,23,42,0.06)] md:last:border",
-                      canManageItems
-                        ? "cursor-grab active:cursor-grabbing"
-                        : "cursor-pointer",
-                      !canManageItems
-                        ? "transition hover:bg-[var(--app-surface-muted)]"
-                        : "",
-                      !item.visible_in_menu ? "opacity-80" : "",
-                      draggingItemId === item.id
-                        ? "bg-white opacity-95 ring-2 ring-[var(--app-primary)]/45"
-                        : "",
-                    ].join(" ")}
-                  >
-                    <div
+                        if (dragPreviewRef.current) {
+                          dragPreviewRef.current.remove();
+                        }
+
+                        const bounds = element.getBoundingClientRect();
+                        const pointerX =
+                          event.clientX || bounds.left + bounds.width / 2;
+                        const pointerY = event.clientY || bounds.top + 24;
+                        dragOffsetRef.current = {
+                          x: pointerX - bounds.left,
+                          y: pointerY - bounds.top,
+                        };
+
+                        const preview = element.cloneNode(true) as HTMLElement;
+                        preview.style.position = "fixed";
+                        preview.style.left = `${bounds.left}px`;
+                        preview.style.top = `${bounds.top}px`;
+                        preview.style.width = `${bounds.width}px`;
+                        preview.style.height = `${bounds.height}px`;
+                        preview.style.pointerEvents = "none";
+                        preview.style.opacity = "1";
+                        preview.style.transform = "none";
+                        preview.style.backgroundColor = "#ffffff";
+                        preview.style.border = "1px solid var(--app-border)";
+                        preview.style.borderRadius = "0.375rem";
+                        preview.style.boxShadow =
+                          "0 18px 42px rgba(0, 0, 0, 0.28)";
+                        preview.style.zIndex = "9999";
+                        document.body.appendChild(preview);
+
+                        dragPreviewRef.current = preview;
+
+                        if (!transparentDragImageRef.current) {
+                          const transparentPixel =
+                            document.createElement("img");
+                          transparentPixel.src =
+                            "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+                          transparentDragImageRef.current = transparentPixel;
+                        }
+
+                        if (transparentDragImageRef.current) {
+                          event.dataTransfer.setDragImage(
+                            transparentDragImageRef.current,
+                            0,
+                            0,
+                          );
+                        }
+
+                        if (dragMoveListenerRef.current) {
+                          window.removeEventListener(
+                            "dragover",
+                            dragMoveListenerRef.current,
+                          );
+                        }
+
+                        dragMoveListenerRef.current = (
+                          moveEvent: globalThis.DragEvent,
+                        ) => {
+                          if (!dragPreviewRef.current) {
+                            return;
+                          }
+
+                          const left =
+                            moveEvent.clientX - dragOffsetRef.current.x;
+                          const top =
+                            moveEvent.clientY - dragOffsetRef.current.y;
+                          dragPreviewRef.current.style.left = `${left}px`;
+                          dragPreviewRef.current.style.top = `${top}px`;
+                        };
+
+                        window.addEventListener(
+                          "dragover",
+                          dragMoveListenerRef.current,
+                        );
+                      }}
+                      onDragEnd={() => {
+                        cleanupDragArtifacts();
+
+                        setDraggingItemId(null);
+                        setDragOverCategory(null);
+                      }}
                       className={[
-                        "flex flex-1 items-start",
-                        item.imageUrl
-                          ? "justify-between gap-4"
-                          : "justify-start",
+                        "relative flex h-full flex-col border-t border-[var(--app-border)] bg-white px-0 py-3 last:border-b sm:py-4 md:rounded-md md:border md:px-2 md:shadow-[0_1px_4px_rgba(15,23,42,0.06)] md:last:border",
+                        canManageItems
+                          ? "cursor-grab active:cursor-grabbing"
+                          : "cursor-pointer",
+                        !canManageItems
+                          ? "transition hover:bg-[var(--app-surface-muted)]"
+                          : "",
+                        !item.visible_in_menu ? "opacity-60" : "",
+                        isItemCardBusy ? "opacity-70" : "",
+                        draggingItemId === item.id
+                          ? "bg-white opacity-95 ring-2 ring-[var(--app-primary)]/45"
+                          : "",
                       ].join(" ")}
                     >
                       <div
-                        className={item.imageUrl ? "min-w-0 flex-1" : "w-full"}
+                        className={[
+                          "flex flex-1 items-start",
+                          item.imageUrl
+                            ? "justify-between gap-4"
+                            : "justify-start",
+                        ].join(" ")}
                       >
-                        <Title as="h3" size="card" className="line-clamp-2">
-                          {`${item.code} - ${item.name}`}
-                        </Title>
-
-                        <Text
-                          tone="muted"
-                          size="sm"
-                          className="mt-2 line-clamp-2"
+                        <div
+                          className={
+                            item.imageUrl ? "min-w-0 flex-1" : "w-full"
+                          }
                         >
-                          {item.description && item.description.length > 0
-                            ? item.description
-                            : "Sem descrição."}
-                        </Text>
+                          <Title as="h3" size="card" className="line-clamp-2">
+                            {`${item.code} - ${item.name}`}
+                          </Title>
 
-                        {item.serves_people > 1 ? (
-                          <Text size="sm" className="mt-2 font-semibold">
-                            Serve {item.serves_people} pessoas
+                          <Text
+                            tone="muted"
+                            size="sm"
+                            className="mt-2 line-clamp-2"
+                          >
+                            {item.description && item.description.length > 0
+                              ? item.description
+                              : "Sem descrição."}
                           </Text>
-                        ) : null}
 
-                        {canManageItems && !item.visible_in_menu ? (
-                          <span className="mt-2 inline-flex rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-                            Oculto no cardápio
-                          </span>
-                        ) : null}
+                          {item.serves_people > 1 ? (
+                            <Text size="sm" className="mt-2 font-semibold">
+                              Serve {item.serves_people} pessoas
+                            </Text>
+                          ) : null}
 
-                        {item.promotional_price !== null &&
-                        item.promotional_price < item.price ? (
-                          <div className="mt-2">
-                            <Text
-                              size="sm"
-                              tone="muted"
-                              className="line-through"
-                            >
+                          {canManageItems && !item.visible_in_menu ? (
+                            <span className="mt-2 inline-flex rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                              Oculto no cardápio
+                            </span>
+                          ) : null}
+
+                          {item.promotional_price !== null &&
+                          item.promotional_price < item.price ? (
+                            <div className="mt-2">
+                              <Text
+                                size="sm"
+                                tone="muted"
+                                className="line-through"
+                              >
+                                {formatItemPriceLabel(
+                                  item.price,
+                                  item.pricing_type,
+                                )}
+                              </Text>
+                              <Text
+                                size="lg"
+                                className="font-semibold text-emerald-700"
+                              >
+                                {formatItemPriceLabel(
+                                  item.promotional_price,
+                                  item.pricing_type,
+                                )}
+                              </Text>
+                            </div>
+                          ) : (
+                            <Text size="lg" className="mt-2 font-semibold">
                               {formatItemPriceLabel(
                                 item.price,
                                 item.pricing_type,
                               )}
                             </Text>
-                            <Text
-                              size="lg"
-                              className="font-semibold text-emerald-700"
-                            >
-                              {formatItemPriceLabel(
-                                item.promotional_price,
-                                item.pricing_type,
-                              )}
-                            </Text>
+                          )}
+                        </div>
+
+                        {item.imageUrl ? (
+                          <div className="relative h-[120px] w-[120px] shrink-0 overflow-hidden rounded-md bg-[var(--app-surface-muted)]">
+                            <Image
+                              src={item.imageUrl}
+                              alt={`Imagem do item ${item.name}`}
+                              fill
+                              draggable={false}
+                              sizes="120px"
+                              quality={80}
+                              className="object-cover"
+                            />
                           </div>
-                        ) : (
-                          <Text size="lg" className="mt-2 font-semibold">
-                            {formatItemPriceLabel(
-                              item.price,
-                              item.pricing_type,
-                            )}
-                          </Text>
-                        )}
+                        ) : null}
                       </div>
 
-                      {item.imageUrl ? (
-                        <div className="relative h-[120px] w-[120px] shrink-0 overflow-hidden rounded-md bg-[var(--app-surface-muted)]">
-                          <Image
-                            src={item.imageUrl}
-                            alt={`Imagem do item ${item.name}`}
-                            fill
-                            draggable={false}
-                            sizes="120px"
-                            quality={80}
-                            className="object-cover"
+                      {canManageItems ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <FormShadcnSelect
+                            id={`item-category-select-${item.id}`}
+                            value={item.category}
+                            options={categorySelectOptions}
+                            isDisabled={isAnyBusy}
+                            onValueChange={(nextCategory) => {
+                              void handleQuickMoveItemCategory(
+                                item.id,
+                                nextCategory,
+                              );
+                            }}
+                            ariaLabel={`Mudar categoria do item ${item.name}`}
+                            className="min-w-[180px] flex-1"
                           />
+
+                          <button
+                            type="button"
+                            disabled={isAnyBusy}
+                            onClick={() => handleOpenEdit(item)}
+                            aria-label={`Editar item ${item.name}`}
+                            title={`Editar item ${item.name}`}
+                            className="inline-flex h-8 w-10 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0 text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            <span className="sr-only">Editar</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isAnyBusy}
+                            onClick={() =>
+                              void handleToggleItemVisibility(item.id)
+                            }
+                            aria-label={
+                              item.visible_in_menu
+                                ? `Desativar item ${item.name}`
+                                : `Ativar item ${item.name}`
+                            }
+                            title={
+                              item.visible_in_menu
+                                ? `Desativar item ${item.name}`
+                                : `Ativar item ${item.name}`
+                            }
+                            className="inline-flex h-8 w-10 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0 text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {item.visible_in_menu ? (
+                              <EyeOff className="h-3.5 w-3.5" />
+                            ) : (
+                              <Eye className="h-3.5 w-3.5" />
+                            )}
+                            <span className="sr-only">
+                              {item.visible_in_menu ? "Desativar" : "Ativar"}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isAnyBusy}
+                            onClick={() => void handleDelete(item)}
+                            aria-label={`Remover item ${item.name}`}
+                            title={`Remover item ${item.name}`}
+                            className="hidden h-8 w-10 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0 text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50 md:inline-flex"
+                          >
+                            {busyItemIds.includes(item.id) ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                            <span className="sr-only">Remover</span>
+                          </button>
                         </div>
                       ) : null}
-                    </div>
-
-                    {canManageItems ? (
-                      <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
-                        <FormShadcnSelect
-                          id={`item-category-select-${item.id}`}
-                          value={item.category}
-                          options={categorySelectOptions}
-                          isDisabled={isAnyBusy}
-                          onValueChange={(nextCategory) => {
-                            void handleQuickMoveItemCategory(
-                              item.id,
-                              nextCategory,
-                            );
-                          }}
-                          ariaLabel={`Mudar categoria do item ${item.name}`}
-                        />
-
-                        <button
-                          type="button"
-                          disabled={isAnyBusy}
-                          onClick={() => handleOpenEdit(item)}
-                          className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <Pencil className="h-3.5 w-3.5" /> Editar
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={isAnyBusy}
-                          onClick={() => void handleToggleItemVisibility(item.id)}
-                          className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {item.visible_in_menu ? (
-                            <EyeOff className="h-3.5 w-3.5" />
-                          ) : (
-                            <Eye className="h-3.5 w-3.5" />
-                          )}
-                          {item.visible_in_menu ? "Desativar" : "Ativar"}
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={isAnyBusy}
-                          onClick={() => void handleDelete(item)}
-                          className="hidden w-full items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50 md:inline-flex"
-                        >
-                          {isDeleting ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                          Remover
-                        </button>
-                      </div>
-                    ) : null}
-                  </article>
-                ))}
+                      {isItemCardBusy ? (
+                        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-md">
+                          <Loader2 className="h-5 w-5 animate-spin text-[var(--app-primary)]" />
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
               </div>
             </section>
           );
@@ -3833,9 +4085,16 @@ export default function ItemsCatalog({
               setEditingItem(null);
               void handleDelete(deletingItem);
             }}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+            aria-label="Remover item"
+            title="Remover item"
+            className="inline-flex w-full items-center justify-center rounded-md border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Trash2 className="h-4 w-4" /> Remover item
+            {editingItem && busyItemIds.includes(editingItem.id) ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
+            <span className="sr-only">Remover item</span>
           </button>
         </form>
       </AppModal>
@@ -4122,18 +4381,24 @@ export default function ItemsCatalog({
                           type="button"
                           disabled={isAnyBusy}
                           onClick={() => handleStartEditAdditional(additional)}
-                          className="inline-flex items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label={`Editar adicional ${additional.title}`}
+                          title={`Editar adicional ${additional.title}`}
+                          className="inline-flex items-center justify-center rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          <Pencil className="h-3.5 w-3.5" /> Editar
+                          <Pencil className="h-3.5 w-3.5" />
+                          <span className="sr-only">Editar</span>
                         </button>
 
                         <button
                           type="button"
                           disabled={isAnyBusy}
                           onClick={() => setAdditionalPendingDelete(additional)}
-                          className="inline-flex items-center justify-center gap-1 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label={`Remover adicional ${additional.title}`}
+                          title={`Remover adicional ${additional.title}`}
+                          className="inline-flex items-center justify-center rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          <Trash2 className="h-3.5 w-3.5" /> Remover
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span className="sr-only">Remover</span>
                         </button>
                       </div>
                     ) : null}
@@ -4312,7 +4577,15 @@ export default function ItemsCatalog({
               onClick={handlePrintQrCode}
               className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--app-primary)] px-3 py-2 text-sm font-semibold text-[var(--app-primary-contrast)]"
             >
-              <Printer className="h-4 w-4" /> Imprimir QR
+              <Printer className="h-4 w-4" /> Imprimir 1 QR
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePrintQrA4}
+              className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--app-text)]"
+            >
+              <Printer className="h-4 w-4" /> Folha A4 com vários QRs
             </button>
           </>
         ) : (

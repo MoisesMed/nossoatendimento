@@ -29,6 +29,19 @@ export default function AppModal({
     setIsMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
   if (!isOpen) {
     return null;
   }
@@ -36,7 +49,7 @@ export default function AppModal({
   const modalContent = (
     <div
       className={cn(
-        "fixed inset-0 z-[120] flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center",
+      "fixed inset-0 z-[120] flex items-end overflow-hidden bg-black/45 p-3 sm:items-center sm:justify-center",
         overlayClassName,
       )}
       onClick={() => {

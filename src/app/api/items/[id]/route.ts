@@ -240,7 +240,7 @@ export async function DELETE(_: Request, { params }: RouteContext) {
 
   const { error } = await supabase
     .from("menu_items")
-    .update({ active: false })
+    .delete()
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .eq("active", true);

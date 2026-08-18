@@ -644,6 +644,8 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   const [mesaForDetail, setMesaForDetail] = useState<Mesa | null>(null);
   const [mesaForEdit, setMesaForEdit] = useState<Mesa | null>(null);
   const [mesaPendingDelete, setMesaPendingDelete] = useState<Mesa | null>(null);
+  const [mesaItemPendingDelete, setMesaItemPendingDelete] =
+    useState<MesaItem | null>(null);
   const [menuMesaId, setMenuMesaId] = useState<string | null>(null);
   const [statusPendingMesaId, setStatusPendingMesaId] = useState<string | null>(
     null,
@@ -1022,6 +1024,47 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     },
   });
 
+  const deleteMesaItemMutation = useMutation({
+    mutationFn: async ({
+      mesaId,
+      itemId,
+    }: {
+      mesaId: string;
+      itemId: string;
+    }) => {
+      const response = await fetch(`/api/mesas/${mesaId}/items/${itemId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const result = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(result.error ?? "Falha ao remover item da mesa");
+      }
+    },
+    onSuccess: (_, variables) => {
+      setMesaItemsByMesaId((prev) => ({
+        ...prev,
+        [variables.mesaId]: (prev[variables.mesaId] ?? []).filter(
+          (item) => item.id !== variables.itemId,
+        ),
+      }));
+      setMesaItemPendingDelete((prev) =>
+        prev?.id === variables.itemId ? null : prev,
+      );
+      toast.success("Item removido da mesa.");
+    },
+    onError: (error) => {
+      if (error instanceof Error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.error("Não foi possível remover o item da mesa.");
+    },
+  });
+
   const clearMesaItemsMutation = useMutation({
     mutationFn: async (mesaId: string) => {
       const response = await fetch(`/api/mesas/${mesaId}/items`, {
@@ -1118,6 +1161,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     deleteMesaMutation.isPending ||
     createMesaItemMutation.isPending ||
     updateMesaItemMutation.isPending ||
+    deleteMesaItemMutation.isPending ||
     clearMesaItemsMutation.isPending;
   const isCreateModalBusy = createMesaMutation.isPending;
   const isEditModalBusy = updateMesaMutation.isPending;
@@ -1750,6 +1794,28 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       }
 
       toast.error("Não foi possível atualizar o item da mesa.");
+    }
+  };
+
+  const handleRequestDeleteMesaItem = (item: MesaItem) => {
+    setMesaItemPendingDelete(item);
+  };
+
+  const handleConfirmDeleteMesaItem = async () => {
+    if (!mesaForDetail || !mesaItemPendingDelete) {
+      return;
+    }
+
+    const itemToDelete = mesaItemPendingDelete;
+    setMesaItemPendingDelete(null);
+
+    try {
+      await deleteMesaItemMutation.mutateAsync({
+        mesaId: mesaForDetail.id,
+        itemId: itemToDelete.id,
+      });
+    } catch {
+      return;
     }
   };
 
@@ -2465,11 +2531,11 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                             </p>
                           ) : (
                             deliveredItems.map((item) => (
-                              <label
+                              <div
                                 key={item.id}
                                 className="flex items-center justify-between gap-2 text-sm"
                               >
-                                <span className="flex items-center gap-2 text-[var(--app-text)]">
+                                <label className="flex items-center gap-2 text-[var(--app-text)]">
                                   <input
                                     type="checkbox"
                                     checked={item.delivered}
@@ -2493,20 +2559,44 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                                       </span>
                                     ) : null}
                                   </span>
-                                </span>
-                                <span className="text-right text-[var(--app-muted)]">
-                                  {item.originalPrice !== null ? (
-                                    <span className="mr-1 text-[11px] line-through opacity-70">
-                                      {formatCurrency(
-                                        item.originalPrice * item.quantity,
-                                      )}
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-right text-[var(--app-muted)]">
+                                    {item.originalPrice !== null ? (
+                                      <span className="mr-1 text-[11px] line-through opacity-70">
+                                        {formatCurrency(
+                                          item.originalPrice * item.quantity,
+                                        )}
+                                      </span>
+                                    ) : null}
+                                    <span>
+                                      {formatCurrency(item.price * item.quantity)}
                                     </span>
-                                  ) : null}
-                                  <span>
-                                    {formatCurrency(item.price * item.quantity)}
                                   </span>
-                                </span>
-                              </label>
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      isDetailStatusBusy ||
+                                      deleteMesaItemMutation.isPending
+                                    }
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      handleRequestDeleteMesaItem(item);
+                                    }}
+                                    aria-label={`Remover item ${formatMesaItemName(item)}`}
+                                    title={`Remover item ${formatMesaItemName(item)}`}
+                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {mesaItemPendingDelete?.id === item.id &&
+                                    deleteMesaItemMutation.isPending ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
                             ))
                           )}
                         </div>
@@ -2526,11 +2616,11 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                             </p>
                           ) : (
                             waitingItems.map((item) => (
-                              <label
+                              <div
                                 key={item.id}
                                 className="flex items-center justify-between gap-2 text-sm"
                               >
-                                <span className="flex items-center gap-2 text-[var(--app-text)]">
+                                <label className="flex items-center gap-2 text-[var(--app-text)]">
                                   <input
                                     type="checkbox"
                                     checked={item.delivered}
@@ -2554,20 +2644,44 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                                       </span>
                                     ) : null}
                                   </span>
-                                </span>
-                                <span className="text-right text-[var(--app-muted)]">
-                                  {item.originalPrice !== null ? (
-                                    <span className="mr-1 text-[11px] line-through opacity-70">
-                                      {formatCurrency(
-                                        item.originalPrice * item.quantity,
-                                      )}
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-right text-[var(--app-muted)]">
+                                    {item.originalPrice !== null ? (
+                                      <span className="mr-1 text-[11px] line-through opacity-70">
+                                        {formatCurrency(
+                                          item.originalPrice * item.quantity,
+                                        )}
+                                      </span>
+                                    ) : null}
+                                    <span>
+                                      {formatCurrency(item.price * item.quantity)}
                                     </span>
-                                  ) : null}
-                                  <span>
-                                    {formatCurrency(item.price * item.quantity)}
                                   </span>
-                                </span>
-                              </label>
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      isDetailStatusBusy ||
+                                      deleteMesaItemMutation.isPending
+                                    }
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      handleRequestDeleteMesaItem(item);
+                                    }}
+                                    aria-label={`Remover item ${formatMesaItemName(item)}`}
+                                    title={`Remover item ${formatMesaItemName(item)}`}
+                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {mesaItemPendingDelete?.id === item.id &&
+                                    deleteMesaItemMutation.isPending ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
                             ))
                           )}
                         </div>
@@ -2621,6 +2735,18 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
         onClose={() => setMesaPendingDelete(null)}
         onConfirm={() => {
           void handleConfirmDeleteMesa();
+        }}
+      />
+
+      <ConfirmationModal
+        isOpen={Boolean(mesaItemPendingDelete)}
+        title="Remover item da mesa"
+        description={`Deseja remover ${mesaItemPendingDelete ? `${mesaItemPendingDelete.quantity}x ${formatMesaItemName(mesaItemPendingDelete)}` : "este item"} da mesa?`}
+        confirmLabel="Remover"
+        isConfirming={deleteMesaItemMutation.isPending}
+        onClose={() => setMesaItemPendingDelete(null)}
+        onConfirm={() => {
+          void handleConfirmDeleteMesaItem();
         }}
       />
 

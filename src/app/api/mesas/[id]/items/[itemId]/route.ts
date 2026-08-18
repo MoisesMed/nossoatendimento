@@ -113,3 +113,33 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
   return NextResponse.json({ data: toMesaItem(data as TableItemRow) });
 }
+
+export async function DELETE(_: Request, { params }: RouteContext) {
+  const { id: mesaId, itemId } = await params;
+  const context = await resolveTenantId();
+
+  if ("error" in context) {
+    return context.error;
+  }
+
+  const { supabase, tenantId } = context;
+
+  const { data, error } = await supabase
+    .from("restaurant_table_items")
+    .delete()
+    .eq("tenant_id", tenantId)
+    .eq("table_id", mesaId)
+    .eq("id", itemId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json({ error: "Falha ao remover item da mesa" }, { status: 500 });
+  }
+
+  if (!data) {
+    return NextResponse.json({ error: "Item da mesa nao encontrado" }, { status: 404 });
+  }
+
+  return NextResponse.json({ success: true });
+}
