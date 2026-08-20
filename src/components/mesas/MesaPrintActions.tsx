@@ -88,7 +88,7 @@ function buildPrintHtml({
   const extraLinesHtml = (extraLines ?? [])
     .map(
       (line) => `
-        <div class="total" style="font-size: 11px; font-weight: 600; margin-top: 4px;">
+        <div class="total" style="font-size: 15px; font-weight: 600; margin-top: 4px;">
           <span>${escapeHtml(line.label)}</span>
           <span>${escapeHtml(line.value)}</span>
         </div>
@@ -117,7 +117,7 @@ function buildPrintHtml({
             margin: 0;
             color: #111827;
             background: #ffffff;
-            font-size: 11px;
+            font-size: 15px;
             line-height: 1.35;
           }
 
@@ -130,14 +130,14 @@ function buildPrintHtml({
           }
 
           .title {
-            font-size: 14px;
+            font-size: 17px;
             font-weight: 700;
             margin-bottom: 2px;
             text-transform: uppercase;
           }
 
           .subtitle {
-            font-size: 11px;
+            font-size: 15px;
             margin-bottom: 4px;
             text-transform: uppercase;
           }
@@ -163,21 +163,21 @@ function buildPrintHtml({
             justify-content: space-between;
             gap: 8px;
             color: #4b5563;
-            font-size: 10px;
+            font-size: 13px;
             margin-left: 10px;
           }
 
           .total {
             display: flex;
             justify-content: space-between;
-            font-size: 12px;
+            font-size: 16px;
             font-weight: 700;
             margin-top: 8px;
           }
 
           .meta {
             color: #4b5563;
-            font-size: 10px;
+            font-size: 13px;
           }
         </style>
       </head>
