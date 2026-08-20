@@ -88,7 +88,7 @@ function buildPrintHtml({
   const extraLinesHtml = (extraLines ?? [])
     .map(
       (line) => `
-        <div class="total" style="font-size: 15px; font-weight: 600; margin-top: 4px;">
+        <div class="summary-line">
           <span>${escapeHtml(line.label)}</span>
           <span>${escapeHtml(line.value)}</span>
         </div>
@@ -147,6 +147,19 @@ function buildPrintHtml({
             margin: 6px 0;
           }
 
+          .summary {
+            margin-top: 4px;
+          }
+
+          .summary-line {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            margin-top: 4px;
+          }
+
           .line-item {
             margin-bottom: 5px;
           }
@@ -173,6 +186,8 @@ function buildPrintHtml({
             font-size: 16px;
             font-weight: 700;
             margin-top: 8px;
+            padding-top: 4px;
+            border-top: 1px dashed #111827;
           }
 
           .meta {
@@ -196,11 +211,13 @@ function buildPrintHtml({
 
           <div class="separator"></div>
 
-          ${extraLinesHtml}
+          <div class="summary">
+            ${extraLinesHtml}
 
-          <div class="total">
-            <span>Total</span>
-            <span>${formatCurrency(total)}</span>
+            <div class="total" style="margin-top: 8px;">
+              <span>Total</span>
+              <span>${formatCurrency(total)}</span>
+            </div>
           </div>
         </main>
       </body>
@@ -267,6 +284,8 @@ export default function MesaPrintActions({
   peopleCount,
   couvertUnitValue,
   isCouvertEnabled,
+  serviceChargePercent,
+  isServiceChargeEnabled,
   disabled,
 }: {
   mesaCode: number;
@@ -277,6 +296,8 @@ export default function MesaPrintActions({
   peopleCount: number;
   couvertUnitValue: number;
   isCouvertEnabled: boolean;
+  serviceChargePercent: number;
+  isServiceChargeEnabled: boolean;
   disabled?: boolean;
 }) {
   const [isContaMenuOpen, setIsContaMenuOpen] = useState(false);
@@ -338,7 +359,10 @@ export default function MesaPrintActions({
     const couvertTotal = isCouvertEnabled
       ? Math.max(0, peopleCount) * Math.max(0, couvertUnitValue)
       : 0;
-    const total = itemsTotal + couvertTotal;
+    const serviceChargeTotal = isServiceChargeEnabled
+      ? (itemsTotal * Math.max(0, serviceChargePercent)) / 100
+      : 0;
+    const total = itemsTotal + couvertTotal + serviceChargeTotal;
 
     printThermalDocument(
       buildPrintHtml({
@@ -355,8 +379,16 @@ export default function MesaPrintActions({
           ...(isCouvertEnabled
             ? [
                 {
-                  label: `Couvert (${peopleCount} x ${formatCurrency(Math.max(0, couvertUnitValue))})`,
+                  label: `Couvert Artístico (${peopleCount} x ${formatCurrency(Math.max(0, couvertUnitValue))})`,
                   value: formatCurrency(couvertTotal),
+                },
+              ]
+            : []),
+          ...(isServiceChargeEnabled
+            ? [
+                {
+                  label: `Taxa de serviço (${serviceChargePercent}%)`,
+                  value: formatCurrency(serviceChargeTotal),
                 },
               ]
             : []),

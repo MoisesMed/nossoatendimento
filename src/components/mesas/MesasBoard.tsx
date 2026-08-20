@@ -18,6 +18,7 @@ import {
   MoreVertical,
   Pencil,
   Plus,
+  Percent,
   Trash2,
   Users,
   Wallet,
@@ -27,6 +28,7 @@ import {
 import { toast } from "react-toastify";
 import MesaPrintActions from "@/components/mesas/MesaPrintActions";
 import ConfirmationModal from "@/components/ui/ConfirmationModal";
+import AppModal from "@/components/ui/AppModal";
 
 type MesaStatus = "VAZIA" | "OCUPADA" | "EM_PREPARO" | "AGUARDANDO_PAGAMENTO";
 
@@ -76,12 +78,23 @@ type ClosedComanda = {
   closedAt: string;
   subtotal: number;
   couvertTotal: number;
+  serviceChargeTotal: number;
   grandTotal: number;
   paidTotal: number;
   remainingTotal: number;
   observation: string | null;
   items: MesaItem[];
   payments: MesaPayment[];
+};
+
+type MesaCouvertOverride = {
+  enabled: boolean;
+  value: number;
+};
+
+type MesaServiceChargeOverride = {
+  enabled: boolean;
+  value: number;
 };
 
 type MesaItemDraft = {
@@ -129,12 +142,21 @@ const CREATE_NEW_CATALOG_ITEM_VALUE = "__CREATE_NEW_CATALOG_ITEM__";
 const DAILY_COUVERT_STORAGE_PREFIX = "nossoatendimento-daily-couvert";
 const DAILY_COUVERT_ENABLED_STORAGE_PREFIX =
   "nossoatendimento-daily-couvert-enabled";
+const MESA_COUVERT_OVERRIDES_STORAGE_PREFIX =
+  "nossoatendimento-mesa-couvert-overrides";
+const DAILY_SERVICE_CHARGE_STORAGE_PREFIX =
+  "nossoatendimento-daily-service-charge";
+const DAILY_SERVICE_CHARGE_ENABLED_STORAGE_PREFIX =
+  "nossoatendimento-daily-service-charge-enabled";
+const MESA_SERVICE_CHARGE_OVERRIDES_STORAGE_PREFIX =
+  "nossoatendimento-mesa-service-charge-overrides";
 const MESA_PAYMENTS_STORAGE_KEY = "nossoatendimento-mesa-payments";
 const CLOSED_COMANDAS_STORAGE_KEY = "nossoatendimento-closed-comandas";
 
 let catalogItemsRequest: Promise<CatalogItem[]> | null = null;
 let catalogItemsCache: CatalogItem[] | null = null;
-let catalogItemAdditionalsRequest: Promise<CatalogItemAdditional[]> | null = null;
+let catalogItemAdditionalsRequest: Promise<CatalogItemAdditional[]> | null =
+  null;
 let catalogItemAdditionalsCache: CatalogItemAdditional[] | null = null;
 
 const paymentMethodLabels: Record<PaymentMethod, string> = {
@@ -185,6 +207,16 @@ function formatMesaItemName(item: MesaItem) {
   }
 
   return item.name;
+}
+
+function parseNonNegativeNumber(value: string) {
+  const numericValue = Number(value);
+
+  if (Number.isNaN(numericValue)) {
+    return 0;
+  }
+
+  return Math.max(0, numericValue);
 }
 
 async function fetchCatalogItemsOnce() {
@@ -487,6 +519,10 @@ function MesaCard({
   onToggleMenu,
   onOpenStatus,
   onOpenEdit,
+  couvertActionLabel,
+  onToggleCouvert,
+  serviceChargeActionLabel,
+  onToggleServiceCharge,
   onDelete,
 }: {
   mesa: Mesa;
@@ -497,6 +533,10 @@ function MesaCard({
   onToggleMenu: (mesaId: string) => void;
   onOpenStatus: (mesa: Mesa) => void;
   onOpenEdit: (mesa: Mesa) => void;
+  couvertActionLabel: string;
+  onToggleCouvert: (mesa: Mesa) => void;
+  serviceChargeActionLabel: string;
+  onToggleServiceCharge: (mesa: Mesa) => void;
   onDelete: (mesa: Mesa) => void;
 }) {
   const style = statusStyles[mesa.status];
@@ -519,7 +559,7 @@ function MesaCard({
       }
 
       const rootRect = root.getBoundingClientRect();
-      const menuWidth = 160;
+      const menuWidth = 192;
       const spacing = 12;
 
       const availableToRight = window.innerWidth - rootRect.left - spacing;
@@ -563,7 +603,7 @@ function MesaCard({
         {menuOpen ? (
           <div
             className={[
-              "absolute z-40 mt-1 w-40 max-w-[calc(100vw-1rem)] rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-lg",
+              "absolute z-40 mt-1 w-48 max-w-[calc(100vw-1rem)] rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-lg",
               menuHorizontalAlign === "open-right" ? "left-0" : "right-0",
             ].join(" ")}
           >
@@ -582,6 +622,22 @@ function MesaCard({
               className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-xs text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Pencil className="h-3.5 w-3.5" /> Editar mesa
+            </button>
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => onToggleCouvert(mesa)}
+              className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-xs text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Wallet className="h-3.5 w-3.5" /> {couvertActionLabel}
+            </button>
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => onToggleServiceCharge(mesa)}
+              className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-xs text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Percent className="h-3.5 w-3.5" /> {serviceChargeActionLabel}
             </button>
             <button
               type="button"
@@ -628,6 +684,27 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   const [openCreateModal, setOpenCreateModal] = useState(false);
   const [isDailyCouvertEnabled, setIsDailyCouvertEnabled] = useState(false);
   const [dailyCouvertValue, setDailyCouvertValue] = useState("0");
+  const [mesaCouvertOverrides, setMesaCouvertOverrides] = useState<
+    Record<string, MesaCouvertOverride>
+  >({});
+  const [isDailyServiceChargeEnabled, setIsDailyServiceChargeEnabled] =
+    useState(false);
+  const [dailyServiceChargeValue, setDailyServiceChargeValue] = useState("10");
+  const [mesaServiceChargeOverrides, setMesaServiceChargeOverrides] = useState<
+    Record<string, MesaServiceChargeOverride>
+  >({});
+  const [couvertModalState, setCouvertModalState] = useState<{
+    scope: "global" | "mesa";
+    mesaId?: string;
+    mesaName?: string;
+  } | null>(null);
+  const [couvertDraftValue, setCouvertDraftValue] = useState("0");
+  const [serviceChargeModalState, setServiceChargeModalState] = useState<{
+    scope: "global" | "mesa";
+    mesaId?: string;
+    mesaName?: string;
+  } | null>(null);
+  const [serviceChargeDraftValue, setServiceChargeDraftValue] = useState("10");
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isQuickCreateItemModalOpen, setIsQuickCreateItemModalOpen] =
     useState(false);
@@ -637,7 +714,6 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     "open-left" | "open-right"
   >("open-left");
   const pagamentoMenuRef = useRef<HTMLDivElement | null>(null);
-  const hasLoadedMesaItemsRef = useRef(false);
   const [openCloseComandaConfirm, setOpenCloseComandaConfirm] = useState(false);
   const [closeComandaObservation, setCloseComandaObservation] = useState("");
   const [isClosingComanda, setIsClosingComanda] = useState(false);
@@ -902,45 +978,26 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   };
 
   const loadMesaItemsMutation = useMutation({
-    mutationFn: async () => {
-      const response = await fetch("/api/mesas/items", { method: "GET" });
+    mutationFn: async (mesaId: string) => {
+      const response = await fetch(`/api/mesas/${mesaId}/items`, {
+        method: "GET",
+      });
       const result = (await response.json().catch(() => ({}))) as {
-        data?: Array<MesaItem & { mesaId: string }>;
+        data?: MesaItem[];
         error?: string;
       };
 
       if (!response.ok || !result.data) {
-        throw new Error(result.error ?? "Falha ao carregar itens das mesas");
+        throw new Error(result.error ?? "Falha ao carregar itens da mesa");
       }
 
       return result.data;
     },
-    onSuccess: (items) => {
-      const grouped = items.reduce<Record<string, MesaItem[]>>((acc, item) => {
-        const mesaId = item.mesaId;
-        const normalizedItem: MesaItem = {
-          id: item.id,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          originalPrice: item.originalPrice ?? null,
-          delivered: item.delivered,
-          pricingType: item.pricingType,
-          weightKg: item.weightKg,
-          additionalTitles: item.additionalTitles ?? [],
-          additionalTotal: item.additionalTotal,
-        };
-
-        if (!acc[mesaId]) {
-          acc[mesaId] = [normalizedItem];
-          return acc;
-        }
-
-        acc[mesaId].push(normalizedItem);
-        return acc;
-      }, {});
-
-      setMesaItemsByMesaId(grouped);
+    onSuccess: (items, mesaId) => {
+      setMesaItemsByMesaId((prev) => ({
+        ...prev,
+        [mesaId]: items,
+      }));
     },
     onError: (error) => {
       if (error instanceof Error) {
@@ -1155,6 +1212,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     () => (mesaForDetail ? (mesaItemsByMesaId[mesaForDetail.id] ?? []) : []),
     [mesaForDetail, mesaItemsByMesaId],
   );
+  const isLoadingMesaItems = loadMesaItemsMutation.isPending;
   const isAnyMesaMutationPending =
     createMesaMutation.isPending ||
     updateMesaMutation.isPending ||
@@ -1177,12 +1235,65 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     0,
   );
   const dailyCouvertAmount = isDailyCouvertEnabled
-    ? Math.max(0, Number(dailyCouvertValue) || 0)
+    ? parseNonNegativeNumber(dailyCouvertValue)
     : 0;
-  const mesaCouvertTotal = mesaForDetail
-    ? mesaForDetail.seats * dailyCouvertAmount
-    : 0;
-  const mesaGrandTotal = mesaTotal + mesaCouvertTotal;
+  const currentMesaCouvert = useMemo(() => {
+    if (!mesaForDetail) {
+      return {
+        enabled: false,
+        value: 0,
+      };
+    }
+
+    const override = mesaCouvertOverrides[mesaForDetail.id];
+
+    if (override) {
+      return override;
+    }
+
+    return {
+      enabled: isDailyCouvertEnabled,
+      value: dailyCouvertAmount,
+    };
+  }, [
+    dailyCouvertAmount,
+    isDailyCouvertEnabled,
+    mesaForDetail,
+    mesaCouvertOverrides,
+  ]);
+  const mesaCouvertTotal =
+    mesaForDetail && currentMesaCouvert.enabled
+      ? mesaForDetail.seats * currentMesaCouvert.value
+      : 0;
+  const currentMesaServiceCharge = useMemo(() => {
+    if (!mesaForDetail) {
+      return {
+        enabled: false,
+        value: 0,
+      };
+    }
+
+    const override = mesaServiceChargeOverrides[mesaForDetail.id];
+
+    if (override) {
+      return override;
+    }
+
+    return {
+      enabled: isDailyServiceChargeEnabled,
+      value: parseNonNegativeNumber(dailyServiceChargeValue),
+    };
+  }, [
+    dailyServiceChargeValue,
+    isDailyServiceChargeEnabled,
+    mesaForDetail,
+    mesaServiceChargeOverrides,
+  ]);
+  const mesaServiceChargeTotal =
+    mesaForDetail && currentMesaServiceCharge.enabled
+      ? (mesaTotal * currentMesaServiceCharge.value) / 100
+      : 0;
+  const mesaGrandTotal = mesaTotal + mesaCouvertTotal + mesaServiceChargeTotal;
   const currentMesaPayments = useMemo(
     () => (mesaForDetail ? (mesaPaymentsByMesaId[mesaForDetail.id] ?? []) : []),
     [mesaForDetail, mesaPaymentsByMesaId],
@@ -1341,15 +1452,6 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   const selectedItemTotal = selectedBaseTotal + selectedAdditionalTotal;
 
   useEffect(() => {
-    if (hasLoadedMesaItemsRef.current) {
-      return;
-    }
-
-    hasLoadedMesaItemsRef.current = true;
-    loadMesaItemsMutation.mutate();
-  }, [loadMesaItemsMutation]);
-
-  useEffect(() => {
     const storedPayments = window.localStorage.getItem(
       MESA_PAYMENTS_STORAGE_KEY,
     );
@@ -1418,12 +1520,100 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   useEffect(() => {
     const storageKey = `${DAILY_COUVERT_STORAGE_PREFIX}-${todayKey}`;
     const enabledStorageKey = `${DAILY_COUVERT_ENABLED_STORAGE_PREFIX}-${todayKey}`;
+    const serviceStorageKey = `${DAILY_SERVICE_CHARGE_STORAGE_PREFIX}-${todayKey}`;
+    const serviceEnabledStorageKey = `${DAILY_SERVICE_CHARGE_ENABLED_STORAGE_PREFIX}-${todayKey}`;
+    const overridesStorageKey = `${MESA_COUVERT_OVERRIDES_STORAGE_PREFIX}-${todayKey}`;
+    const serviceOverridesStorageKey = `${MESA_SERVICE_CHARGE_OVERRIDES_STORAGE_PREFIX}-${todayKey}`;
+    const storedValue = window.localStorage.getItem(storageKey);
+    const storedEnabled = window.localStorage.getItem(enabledStorageKey);
+    const storedServiceValue = window.localStorage.getItem(serviceStorageKey);
+    const storedServiceEnabled = window.localStorage.getItem(
+      serviceEnabledStorageKey,
+    );
+    const storedOverrides = window.localStorage.getItem(overridesStorageKey);
+    const storedServiceOverrides = window.localStorage.getItem(
+      serviceOverridesStorageKey,
+    );
+
+    if (storedValue && !Number.isNaN(Number(storedValue))) {
+      setDailyCouvertValue(storedValue);
+    }
+
+    if (storedEnabled === "true") {
+      setIsDailyCouvertEnabled(true);
+    }
+
+    if (storedServiceValue && !Number.isNaN(Number(storedServiceValue))) {
+      setDailyServiceChargeValue(storedServiceValue);
+    }
+
+    if (storedServiceEnabled === "true") {
+      setIsDailyServiceChargeEnabled(true);
+    }
+
+    if (!storedOverrides) {
+    } else {
+      try {
+        const parsed = JSON.parse(storedOverrides) as Record<
+          string,
+          MesaCouvertOverride
+        >;
+        setMesaCouvertOverrides(parsed);
+      } catch {
+        window.localStorage.removeItem(overridesStorageKey);
+      }
+    }
+
+    if (!storedServiceOverrides) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(storedServiceOverrides) as Record<
+        string,
+        MesaServiceChargeOverride
+      >;
+      setMesaServiceChargeOverrides(parsed);
+    } catch {
+      window.localStorage.removeItem(serviceOverridesStorageKey);
+    }
+  }, [todayKey]);
+
+  useEffect(() => {
+    const storageKey = `${DAILY_COUVERT_STORAGE_PREFIX}-${todayKey}`;
+    const enabledStorageKey = `${DAILY_COUVERT_ENABLED_STORAGE_PREFIX}-${todayKey}`;
     window.localStorage.setItem(storageKey, dailyCouvertValue);
     window.localStorage.setItem(
       enabledStorageKey,
       String(isDailyCouvertEnabled),
     );
   }, [dailyCouvertValue, isDailyCouvertEnabled, todayKey]);
+
+  useEffect(() => {
+    const storageKey = `${MESA_COUVERT_OVERRIDES_STORAGE_PREFIX}-${todayKey}`;
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify(mesaCouvertOverrides),
+    );
+  }, [mesaCouvertOverrides, todayKey]);
+
+  useEffect(() => {
+    const storageKey = `${DAILY_SERVICE_CHARGE_STORAGE_PREFIX}-${todayKey}`;
+    const enabledStorageKey = `${DAILY_SERVICE_CHARGE_ENABLED_STORAGE_PREFIX}-${todayKey}`;
+    window.localStorage.setItem(storageKey, dailyServiceChargeValue);
+    window.localStorage.setItem(
+      enabledStorageKey,
+      String(isDailyServiceChargeEnabled),
+    );
+  }, [dailyServiceChargeValue, isDailyServiceChargeEnabled, todayKey]);
+
+  useEffect(() => {
+    const storageKey = `${MESA_SERVICE_CHARGE_OVERRIDES_STORAGE_PREFIX}-${todayKey}`;
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify(mesaServiceChargeOverrides),
+    );
+  }, [mesaServiceChargeOverrides, todayKey]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1505,6 +1695,11 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     setMenuMesaId(null);
     setIsPaymentModalOpen(false);
     setMesaForDetail(mesa);
+    setMesaItemsByMesaId((prev) => ({
+      ...prev,
+      [mesa.id]: [],
+    }));
+    void loadMesaItemsMutation.mutateAsync(mesa.id);
   };
 
   const handleOpenEditMesa = (mesa: Mesa) => {
@@ -1553,6 +1748,196 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     } finally {
       setStatusPendingMesaId(null);
     }
+  };
+
+  const getMesaCouvertConfig = (mesaId: string) => {
+    const override = mesaCouvertOverrides[mesaId];
+
+    if (override) {
+      return override;
+    }
+
+    return {
+      enabled: isDailyCouvertEnabled,
+      value: parseNonNegativeNumber(dailyCouvertValue),
+    };
+  };
+
+  const getMesaServiceChargeConfig = (mesaId: string) => {
+    const override = mesaServiceChargeOverrides[mesaId];
+
+    if (override) {
+      return override;
+    }
+
+    return {
+      enabled: isDailyServiceChargeEnabled,
+      value: parseNonNegativeNumber(dailyServiceChargeValue),
+    };
+  };
+
+  const openCouvertModal = (scope: "global" | "mesa", mesa?: Mesa) => {
+    const initialValue =
+      scope === "mesa" && mesa
+        ? String(getMesaCouvertConfig(mesa.id).value || dailyCouvertValue || 0)
+        : String(parseNonNegativeNumber(dailyCouvertValue) || 0);
+
+    setCouvertDraftValue(initialValue);
+    setCouvertModalState(
+      scope === "mesa" && mesa
+        ? {
+            scope,
+            mesaId: mesa.id,
+            mesaName: mesa.name,
+          }
+        : { scope },
+    );
+  };
+
+  const handleToggleGlobalCouvert = (nextEnabled: boolean) => {
+    if (!nextEnabled) {
+      setIsDailyCouvertEnabled(false);
+      return;
+    }
+
+    openCouvertModal("global");
+  };
+
+  const handleToggleMesaCouvert = (mesa: Mesa) => {
+    const currentConfig = getMesaCouvertConfig(mesa.id);
+
+    if (currentConfig.enabled) {
+      setMesaCouvertOverrides((prev) => ({
+        ...prev,
+        [mesa.id]: {
+          enabled: false,
+          value: currentConfig.value,
+        },
+      }));
+      setMenuMesaId(null);
+      return;
+    }
+
+    openCouvertModal("mesa", mesa);
+    setMenuMesaId(null);
+  };
+
+  const openServiceChargeModal = (scope: "global" | "mesa", mesa?: Mesa) => {
+    const initialValue =
+      scope === "mesa" && mesa
+        ? String(
+            getMesaServiceChargeConfig(mesa.id).value ||
+              dailyServiceChargeValue ||
+              10,
+          )
+        : String(parseNonNegativeNumber(dailyServiceChargeValue) || 10);
+
+    setServiceChargeDraftValue(initialValue);
+    setServiceChargeModalState(
+      scope === "mesa" && mesa
+        ? {
+            scope,
+            mesaId: mesa.id,
+            mesaName: mesa.name,
+          }
+        : { scope },
+    );
+  };
+
+  const handleToggleGlobalServiceCharge = (nextEnabled: boolean) => {
+    if (!nextEnabled) {
+      setIsDailyServiceChargeEnabled(false);
+      return;
+    }
+
+    openServiceChargeModal("global");
+  };
+
+  const handleToggleMesaServiceCharge = (mesa: Mesa) => {
+    const currentConfig = getMesaServiceChargeConfig(mesa.id);
+
+    if (currentConfig.enabled) {
+      setMesaServiceChargeOverrides((prev) => ({
+        ...prev,
+        [mesa.id]: {
+          enabled: false,
+          value: currentConfig.value,
+        },
+      }));
+      setMenuMesaId(null);
+      return;
+    }
+
+    openServiceChargeModal("mesa", mesa);
+    setMenuMesaId(null);
+  };
+
+  const handleConfirmCouvertModal = () => {
+    if (!couvertModalState) {
+      return;
+    }
+
+    const parsedValue = Number(couvertDraftValue);
+
+    if (Number.isNaN(parsedValue) || parsedValue <= 0) {
+      toast.error("Informe um valor válido.");
+      return;
+    }
+
+    if (couvertModalState.scope === "global") {
+      setDailyCouvertValue(String(parsedValue));
+      setIsDailyCouvertEnabled(true);
+      setCouvertModalState(null);
+      return;
+    }
+
+    if (!couvertModalState.mesaId) {
+      setCouvertModalState(null);
+      return;
+    }
+
+    setMesaCouvertOverrides((prev) => ({
+      ...prev,
+      [couvertModalState.mesaId as string]: {
+        enabled: true,
+        value: parsedValue,
+      },
+    }));
+    setCouvertModalState(null);
+  };
+
+  const handleConfirmServiceChargeModal = () => {
+    if (!serviceChargeModalState) {
+      return;
+    }
+
+    const parsedValue = Number(serviceChargeDraftValue);
+
+    if (Number.isNaN(parsedValue) || parsedValue <= 0) {
+      toast.error("Informe um percentual válido.");
+      return;
+    }
+
+    if (serviceChargeModalState.scope === "global") {
+      setDailyServiceChargeValue(String(parsedValue));
+      setIsDailyServiceChargeEnabled(true);
+      setServiceChargeModalState(null);
+      return;
+    }
+
+    if (!serviceChargeModalState.mesaId) {
+      setServiceChargeModalState(null);
+      return;
+    }
+
+    setMesaServiceChargeOverrides((prev) => ({
+      ...prev,
+      [serviceChargeModalState.mesaId as string]: {
+        enabled: true,
+        value: parsedValue,
+      },
+    }));
+    setServiceChargeModalState(null);
   };
 
   const handleSaveEditMesa = async (
@@ -1908,10 +2293,13 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       (total, item) => total + item.quantity * item.price,
       0,
     );
-    const couvertTotal = isDailyCouvertEnabled
-      ? mesaForDetail.seats * Math.max(0, Number(dailyCouvertValue) || 0)
+    const couvertTotal = currentMesaCouvert.enabled
+      ? mesaForDetail.seats * currentMesaCouvert.value
       : 0;
-    const grandTotal = subtotal + couvertTotal;
+    const serviceChargeTotal = currentMesaServiceCharge.enabled
+      ? (subtotal * currentMesaServiceCharge.value) / 100
+      : 0;
+    const grandTotal = subtotal + couvertTotal + serviceChargeTotal;
     const paid = mesaPayments.reduce(
       (total, payment) => total + payment.amount,
       0,
@@ -1935,6 +2323,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
         closedAt: new Date().toISOString(),
         subtotal,
         couvertTotal,
+        serviceChargeTotal,
         grandTotal,
         paidTotal: paid,
         remainingTotal: remaining,
@@ -1985,36 +2374,27 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     <>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div className="block max-w-xs space-y-2">
-          <label className="inline-flex items-center gap-2 text-xs font-medium text-[var(--app-text)]">
+          <label className="inline-flex items-center mr-2 gap-2 text-xs font-medium text-[var(--app-text)]">
             <input
               type="checkbox"
               checked={isDailyCouvertEnabled}
               onChange={(event) =>
-                setIsDailyCouvertEnabled(event.target.checked)
+                handleToggleGlobalCouvert(event.target.checked)
               }
             />
-            Habilitar couvert do dia
+            Habilitar couvert artístico
           </label>
 
-          {isDailyCouvertEnabled ? (
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-[var(--app-muted)]">
-                Valor do couvert
-              </span>
-              <input
-                value={dailyCouvertValue}
-                onChange={(event) => setDailyCouvertValue(event.target.value)}
-                type="number"
-                min={0}
-                step="0.01"
-                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
-                placeholder="0.00"
-              />
-              <span className="text-[11px] text-[var(--app-muted)]">
-                Calculado por mesa: pessoas x couvert
-              </span>
-            </label>
-          ) : null}
+          <label className="inline-flex items-center gap-2 text-xs font-medium text-[var(--app-text)]">
+            <input
+              type="checkbox"
+              checked={isDailyServiceChargeEnabled}
+              onChange={(event) =>
+                handleToggleGlobalServiceCharge(event.target.checked)
+              }
+            />
+            Habilitar taxa de serviço
+          </label>
         </div>
 
         <button
@@ -2076,6 +2456,18 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
             }
             onOpenStatus={handleOpenMesaDetail}
             onOpenEdit={handleOpenEditMesa}
+            couvertActionLabel={
+              getMesaCouvertConfig(mesa.id).enabled
+                ? "Desabilitar couvert artístico nesta mesa"
+                : "Habilitar couvert artístico nesta mesa"
+            }
+            onToggleCouvert={handleToggleMesaCouvert}
+            serviceChargeActionLabel={
+              getMesaServiceChargeConfig(mesa.id).enabled
+                ? "Desabilitar taxa de serviço nesta mesa"
+                : "Habilitar taxa de serviço nesta mesa"
+            }
+            onToggleServiceCharge={handleToggleMesaServiceCharge}
             onDelete={handleDeleteMesa}
           />
         ))}
@@ -2352,7 +2744,13 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                           Detalhamento do pedido
                         </p>
 
-                        {requestedItemsSummary.length === 0 ? (
+                        {isLoadingMesaItems ? (
+                          <div className="mt-2 space-y-2 animate-pulse">
+                            <div className="h-4 w-3/4 rounded bg-[var(--app-surface-muted)]" />
+                            <div className="h-4 w-full rounded bg-[var(--app-surface-muted)]" />
+                            <div className="h-4 w-5/6 rounded bg-[var(--app-surface-muted)]" />
+                          </div>
+                        ) : requestedItemsSummary.length === 0 ? (
                           <p className="mt-1 text-xs text-[var(--app-muted)]">
                             Nenhum item lançado na mesa.
                           </p>
@@ -2393,9 +2791,36 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
 
                       <div className="mb-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2">
                         <div className="flex items-center justify-between gap-2 text-sm text-[var(--app-text)]">
+                          <span>Subtotal itens</span>
+                          <span>{formatCurrency(mesaTotal)}</span>
+                        </div>
+                        {currentMesaCouvert.enabled ? (
+                          <div className="mt-1 flex items-center justify-between gap-2 text-sm text-[var(--app-text)]">
+                            <span>
+                              Couvert artístico ({mesaForDetail.seats} x{" "}
+                              {formatCurrency(currentMesaCouvert.value)})
+                            </span>
+                            <span>{formatCurrency(mesaCouvertTotal)}</span>
+                          </div>
+                        ) : null}
+                        {currentMesaServiceCharge.enabled ? (
+                          <div className="mt-1 flex items-center justify-between gap-2 text-sm text-[var(--app-text)]">
+                            <span>
+                              Taxa de serviço ({currentMesaServiceCharge.value}
+                              %)
+                            </span>
+                            <span>
+                              {formatCurrency(mesaServiceChargeTotal)}
+                            </span>
+                          </div>
+                        ) : null}
+                        <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--app-border)] pt-2 text-base font-semibold text-[var(--app-text)]">
                           <span>Total da mesa</span>
                           <span>{formatCurrency(mesaGrandTotal)}</span>
                         </div>
+                      </div>
+
+                      <div className="mb-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2">
                         <div className="mt-1 flex items-center justify-between gap-2 text-sm text-[var(--app-text)]">
                           <span>Pago</span>
                           <span>{formatCurrency(paidTotal)}</span>
@@ -2463,8 +2888,12 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                           deliveredItems={deliveredItems}
                           allItems={currentMesaItems}
                           peopleCount={mesaForDetail.seats}
-                          couvertUnitValue={dailyCouvertAmount}
-                          isCouvertEnabled={isDailyCouvertEnabled}
+                          couvertUnitValue={currentMesaCouvert.value}
+                          isCouvertEnabled={currentMesaCouvert.enabled}
+                          serviceChargePercent={currentMesaServiceCharge.value}
+                          isServiceChargeEnabled={
+                            currentMesaServiceCharge.enabled
+                          }
                           disabled={isDetailStatusBusy}
                         />
 
@@ -2525,7 +2954,12 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                         </header>
 
                         <div className="space-y-1 px-3 py-2">
-                          {deliveredItems.length === 0 ? (
+                          {isLoadingMesaItems ? (
+                            <div className="space-y-2 py-2 animate-pulse">
+                              <div className="h-10 rounded-lg bg-[var(--app-surface-muted)]" />
+                              <div className="h-10 rounded-lg bg-[var(--app-surface-muted)]" />
+                            </div>
+                          ) : deliveredItems.length === 0 ? (
                             <p className="text-sm text-[var(--app-muted)] leading-tight">
                               Nenhum item entregue.
                             </p>
@@ -2570,7 +3004,9 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                                       </span>
                                     ) : null}
                                     <span>
-                                      {formatCurrency(item.price * item.quantity)}
+                                      {formatCurrency(
+                                        item.price * item.quantity,
+                                      )}
                                     </span>
                                   </span>
                                   <button
@@ -2610,7 +3046,12 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                         </header>
 
                         <div className="space-y-1 px-3 py-2">
-                          {waitingItems.length === 0 ? (
+                          {isLoadingMesaItems ? (
+                            <div className="space-y-2 py-2 animate-pulse">
+                              <div className="h-10 rounded-lg bg-[var(--app-surface-muted)]" />
+                              <div className="h-10 rounded-lg bg-[var(--app-surface-muted)]" />
+                            </div>
+                          ) : waitingItems.length === 0 ? (
                             <p className="text-sm text-[var(--app-muted)] leading-tight">
                               Nenhum item aguardando envio.
                             </p>
@@ -2655,7 +3096,9 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                                       </span>
                                     ) : null}
                                     <span>
-                                      {formatCurrency(item.price * item.quantity)}
+                                      {formatCurrency(
+                                        item.price * item.quantity,
+                                      )}
                                     </span>
                                   </span>
                                   <button
@@ -2703,13 +3146,24 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                           <span>Subtotal itens</span>
                           <span>{formatCurrency(mesaTotal)}</span>
                         </div>
-                        {isDailyCouvertEnabled ? (
+                        {currentMesaCouvert.enabled ? (
                           <div className="mt-1 flex items-center justify-between gap-2 text-sm text-[var(--app-text)]">
                             <span>
-                              Couvert ({mesaForDetail.seats} x{" "}
-                              {formatCurrency(dailyCouvertAmount)})
+                              Couvert artístico ({mesaForDetail.seats} x{" "}
+                              {formatCurrency(currentMesaCouvert.value)})
                             </span>
                             <span>{formatCurrency(mesaCouvertTotal)}</span>
+                          </div>
+                        ) : null}
+                        {currentMesaServiceCharge.enabled ? (
+                          <div className="mt-1 flex items-center justify-between gap-2 text-sm text-[var(--app-text)]">
+                            <span>
+                              Taxa de serviço ({currentMesaServiceCharge.value}
+                              %)
+                            </span>
+                            <span>
+                              {formatCurrency(mesaServiceChargeTotal)}
+                            </span>
                           </div>
                         ) : null}
                         <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--app-border)] pt-2 text-base font-semibold text-[var(--app-text)]">
@@ -2724,6 +3178,140 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
             })()}
           </div>
         </div>
+      ) : null}
+
+      {couvertModalState ? (
+        <AppModal
+          isOpen={Boolean(couvertModalState)}
+          onClose={() => setCouvertModalState(null)}
+          panelClassName="w-full rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-2xl sm:max-w-md sm:p-5"
+        >
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[12px] font-medium text-[var(--app-muted)]">
+                Couvert
+              </p>
+              <h2 className="text-xl font-semibold text-[var(--app-text)]">
+                {couvertModalState.scope === "global"
+                  ? "Configurar couvert do dia"
+                  : `Mesa ${couvertModalState.mesaName ?? ""}`}
+              </h2>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setCouvertModalState(null)}
+              className="rounded-full p-1 text-[var(--app-muted)] hover:opacity-80"
+              aria-label="Fechar modal"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-[var(--app-text)]">
+              Valor do couvert
+            </span>
+            <input
+              value={couvertDraftValue}
+              onChange={(event) => setCouvertDraftValue(event.target.value)}
+              type="number"
+              min={0}
+              step="0.01"
+              className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+              placeholder="0,00"
+            />
+          </label>
+
+          <p className="mt-2 text-xs text-[var(--app-muted)]">
+            O valor será aplicado por pessoa na mesa.
+          </p>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setCouvertModalState(null)}
+              className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--app-text)]"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmCouvertModal}
+              className="rounded-lg bg-[var(--app-primary)] px-3 py-2 text-sm font-semibold text-[var(--app-primary-contrast)]"
+            >
+              Aplicar
+            </button>
+          </div>
+        </AppModal>
+      ) : null}
+
+      {serviceChargeModalState ? (
+        <AppModal
+          isOpen={Boolean(serviceChargeModalState)}
+          onClose={() => setServiceChargeModalState(null)}
+          panelClassName="w-full rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-2xl sm:max-w-md sm:p-5"
+        >
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[12px] font-medium text-[var(--app-muted)]">
+                Taxa de serviço
+              </p>
+              <h2 className="text-xl font-semibold text-[var(--app-text)]">
+                {serviceChargeModalState.scope === "global"
+                  ? "Configurar taxa de serviço do dia"
+                  : `Mesa ${serviceChargeModalState.mesaName ?? ""}`}
+              </h2>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setServiceChargeModalState(null)}
+              className="rounded-full p-1 text-[var(--app-muted)] hover:opacity-80"
+              aria-label="Fechar modal"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-[var(--app-text)]">
+              Percentual (%)
+            </span>
+            <input
+              value={serviceChargeDraftValue}
+              onChange={(event) =>
+                setServiceChargeDraftValue(event.target.value)
+              }
+              type="number"
+              min={0}
+              step="0.1"
+              className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+              placeholder="10"
+            />
+          </label>
+
+          <p className="mt-2 text-xs text-[var(--app-muted)]">
+            O valor será aplicado sobre o subtotal dos itens.
+          </p>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setServiceChargeModalState(null)}
+              className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--app-text)]"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmServiceChargeModal}
+              className="rounded-lg bg-[var(--app-primary)] px-3 py-2 text-sm font-semibold text-[var(--app-primary-contrast)]"
+            >
+              Aplicar
+            </button>
+          </div>
+        </AppModal>
       ) : null}
 
       <ConfirmationModal
@@ -2829,6 +3417,17 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
               {isDailyCouvertEnabled ? (
                 <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--app-border)] pt-2 text-xs text-[var(--app-text)]">
                   <span>Couvert ({mesaForDetail.seats} pessoas)</span>
+                  <span className="font-semibold">
+                    {formatCurrency(mesaCouvertTotal)}
+                  </span>
+                </div>
+              ) : null}
+              {currentMesaCouvert.enabled ? (
+                <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--app-border)] pt-2 text-xs text-[var(--app-text)]">
+                  <span>
+                    Couvert ({mesaForDetail.seats} x{" "}
+                    {formatCurrency(currentMesaCouvert.value)})
+                  </span>
                   <span className="font-semibold">
                     {formatCurrency(mesaCouvertTotal)}
                   </span>

@@ -154,6 +154,38 @@ export async function POST(request: Request, { params }: RouteContext) {
   return NextResponse.json({ data: toMesaItem(data as TableItemRow) }, { status: 201 });
 }
 
+export async function GET(_: Request, { params }: RouteContext) {
+  const { id: mesaId } = await params;
+  const context = await resolveTenantId();
+
+  if ("error" in context) {
+    return context.error;
+  }
+
+  const { supabase, tenantId } = context;
+  const tableCheck = await ensureTableExistsForTenant(supabase, tenantId, mesaId);
+  if ("error" in tableCheck) {
+    return tableCheck.error;
+  }
+
+  const { data, error } = await supabase
+    .from("restaurant_table_items")
+    .select(
+      "id, table_id, name, quantity, price, original_price, delivered, pricing_type, weight_kg, additional_titles, additional_total",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("table_id", mesaId)
+    .order("created_at", { ascending: true });
+
+  if (error || !data) {
+    return NextResponse.json({ error: "Falha ao carregar itens da mesa" }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    data: (data as TableItemRow[]).map(toMesaItem),
+  });
+}
+
 export async function DELETE(_: Request, { params }: RouteContext) {
   const { id: mesaId } = await params;
   const context = await resolveTenantId();
