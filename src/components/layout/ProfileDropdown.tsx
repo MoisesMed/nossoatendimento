@@ -137,7 +137,7 @@ export default function ProfileDropdown({
       }
     }
 
-    if (normalizedPhone.length < 10) {
+    if (normalizedPhone.length > 0 && normalizedPhone.length < 10) {
       nextErrors.phone = "Informe um telefone valido com DDD";
     } else if (normalizedPhone.length > 15) {
       nextErrors.phone = "Número muito longo";
@@ -245,7 +245,7 @@ export default function ProfileDropdown({
             </button>
           ) : null}
 
-          {(userRole === "DONO" || userRole === "ATENDENTE") && (
+          {userRole === "DONO" && (
             <Link
               href="/auditoria"
               className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--app-muted)] transition hover:opacity-80"
@@ -342,7 +342,9 @@ export default function ProfileDropdown({
           </label>
 
           <label className="block space-y-1">
-            <span className="text-sm font-medium text-slate-800">Telefone</span>
+            <span className="text-sm font-medium text-slate-800">
+              Telefone (opcional)
+            </span>
             <input
               type="text"
               value={employeePhone}

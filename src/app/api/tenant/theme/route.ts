@@ -21,7 +21,7 @@ const updateThemeSchema = z.object({
 });
 
 function isAdminLike(role: MembershipRole) {
-  return role === "DONO" || role === "ATENDENTE";
+  return role === "DONO";
 }
 
 export async function GET() {

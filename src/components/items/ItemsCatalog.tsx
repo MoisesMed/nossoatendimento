@@ -811,7 +811,7 @@ export default function ItemsCatalog({
     isDeleteAdditionalBusy ||
     Boolean(renamingCategory) ||
     isAnyItemBusy;
-  const canManageItems = userRole === "DONO" || userRole === "ATENDENTE";
+  const canManageItems = userRole === "DONO";
   const canReorderCategories = canManageItems && activeCategoryFilter === "ALL";
 
   const cleanupDragArtifacts = () => {

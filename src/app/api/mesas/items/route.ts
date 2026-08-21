@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 
 type MembershipRow = {
   tenant_id: string;
+  role: "DONO" | "ATENDENTE" | "USUARIO";
 };
 
 type TableItemRow = {
@@ -56,7 +57,7 @@ async function resolveTenantId() {
 
   const { data: membershipsBySlug, error: membershipError } = await supabase
     .from("memberships")
-    .select("tenant_id, tenants!inner(slug)")
+    .select("tenant_id, role, tenants!inner(slug)")
     .eq("user_id", user.id)
     .eq("active", true)
     .eq("tenants.slug", preferredSlug)
@@ -69,12 +70,16 @@ async function resolveTenantId() {
   const typedBySlug = membershipsBySlug as MembershipRow[] | null;
 
   if (typedBySlug && typedBySlug.length > 0) {
-    return { supabase, tenantId: typedBySlug[0].tenant_id };
+    return {
+      supabase,
+      tenantId: typedBySlug[0].tenant_id,
+      userRole: typedBySlug[0].role,
+    };
   }
 
   const { data: fallbackMemberships, error: fallbackError } = await supabase
     .from("memberships")
-    .select("tenant_id")
+    .select("tenant_id, role")
     .eq("user_id", user.id)
     .eq("active", true)
     .limit(1);
@@ -89,7 +94,11 @@ async function resolveTenantId() {
     return { error: NextResponse.json({ error: "Usuario sem membership" }, { status: 403 }) };
   }
 
-  return { supabase, tenantId: typedFallback[0].tenant_id };
+  return {
+    supabase,
+    tenantId: typedFallback[0].tenant_id,
+    userRole: typedFallback[0].role,
+  };
 }
 
 export async function GET() {
@@ -99,7 +108,11 @@ export async function GET() {
     return context.error;
   }
 
-  const { supabase, tenantId } = context;
+  const { supabase, tenantId, userRole } = context;
+
+  if (userRole === "USUARIO") {
+    return NextResponse.json({ error: "Sem permissao para acessar itens das mesas" }, { status: 403 });
+  }
 
   const { data, error } = await supabase
     .from("restaurant_table_items")

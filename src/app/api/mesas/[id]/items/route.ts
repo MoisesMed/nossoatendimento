@@ -4,6 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 
 type MembershipRow = {
   tenant_id: string;
+  role: "DONO" | "ATENDENTE" | "USUARIO";
 };
 
 type RouteContext = {
@@ -71,7 +72,7 @@ async function resolveTenantId() {
 
   const { data: membershipsBySlug } = await supabase
     .from("memberships")
-    .select("tenant_id")
+    .select("tenant_id, role")
     .eq("user_id", user.id)
     .eq("active", true)
     .limit(1);
@@ -82,7 +83,11 @@ async function resolveTenantId() {
     return { error: NextResponse.json({ error: "Usuario sem membership" }, { status: 403 }) };
   }
 
-  return { supabase, tenantId: typedBySlug[0].tenant_id };
+  return {
+    supabase,
+    tenantId: typedBySlug[0].tenant_id,
+    userRole: typedBySlug[0].role,
+  };
 }
 
 async function ensureTableExistsForTenant(
@@ -117,7 +122,11 @@ export async function POST(request: Request, { params }: RouteContext) {
     return context.error;
   }
 
-  const { supabase, tenantId } = context;
+  const { supabase, tenantId, userRole } = context;
+
+  if (userRole === "USUARIO") {
+    return NextResponse.json({ error: "Sem permissao para adicionar item na mesa" }, { status: 403 });
+  }
   const tableCheck = await ensureTableExistsForTenant(supabase, tenantId, mesaId);
   if ("error" in tableCheck) {
     return tableCheck.error;
@@ -166,7 +175,11 @@ export async function GET(_: Request, { params }: RouteContext) {
     return context.error;
   }
 
-  const { supabase, tenantId } = context;
+  const { supabase, tenantId, userRole } = context;
+
+  if (userRole === "USUARIO") {
+    return NextResponse.json({ error: "Sem permissao para acessar itens da mesa" }, { status: 403 });
+  }
   const tableCheck = await ensureTableExistsForTenant(supabase, tenantId, mesaId);
   if ("error" in tableCheck) {
     return tableCheck.error;
@@ -198,7 +211,11 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     return context.error;
   }
 
-  const { supabase, tenantId } = context;
+  const { supabase, tenantId, userRole } = context;
+
+  if (userRole === "USUARIO") {
+    return NextResponse.json({ error: "Sem permissao para limpar itens da mesa" }, { status: 403 });
+  }
   const tableCheck = await ensureTableExistsForTenant(supabase, tenantId, mesaId);
   if ("error" in tableCheck) {
     return tableCheck.error;

@@ -64,12 +64,6 @@ export default function CreateEmployeeForm() {
       }
     }
 
-    if (normalizedPhone.length < 10) {
-      nextErrors.phone = "Informe um telefone valido com DDD";
-    } else if (normalizedPhone.length > 15) {
-      nextErrors.phone = "Número muito longo";
-    }
-
     if (password.length < 6) {
       nextErrors.password = "A senha precisa ter pelo menos 6 caracteres";
     }
@@ -78,6 +72,12 @@ export default function CreateEmployeeForm() {
       nextErrors.confirmPassword = "Confirme a senha";
     } else if (password !== confirmPassword) {
       nextErrors.confirmPassword = "As senhas não conferem";
+    }
+
+    if (normalizedPhone.length > 0 && normalizedPhone.length < 10) {
+      nextErrors.phone = "Informe um telefone valido com DDD";
+    } else if (normalizedPhone.length > 15) {
+      nextErrors.phone = "Número muito longo";
     }
 
     setErrors(nextErrors);
@@ -203,7 +203,7 @@ export default function CreateEmployeeForm() {
 
         <label className="block space-y-1">
           <span className="text-sm font-medium text-[var(--app-text)]">
-            Telefone
+            Telefone (opcional)
           </span>
           <input
             type="text"

@@ -80,7 +80,7 @@ src/
 - Funcoes auxiliares no schema app para checar membership e role.
 - Policies devem usar auth.uid() e nunca depender de parametro vindo do cliente.
 
-## Fluxo inicial do garcom
+## Fluxo inicial do garçom
 
 1. Listar reservas ativas do tenant atual.
 2. Marcar check-in.

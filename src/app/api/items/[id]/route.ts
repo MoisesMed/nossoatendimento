@@ -4,6 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 
 type MembershipRow = {
   tenant_id: string;
+  role: "DONO" | "ATENDENTE" | "USUARIO";
 };
 
 type TenantRow = {
@@ -98,7 +99,7 @@ async function resolveTenantId() {
 
   const membershipsBase = supabase
     .from("memberships")
-    .select("tenant_id")
+    .select("tenant_id, role")
     .eq("user_id", user.id)
     .eq("active", true);
 
@@ -122,7 +123,11 @@ async function resolveTenantId() {
     return { error: NextResponse.json({ error: "Usuario sem membership" }, { status: 403 }) };
   }
 
-  return { supabase, tenantId: typedMemberships[0].tenant_id };
+  return {
+    supabase,
+    tenantId: typedMemberships[0].tenant_id,
+    userRole: typedMemberships[0].role,
+  };
 }
 
 export async function PATCH(request: Request, { params }: RouteContext) {
@@ -133,7 +138,11 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     return context.error;
   }
 
-  const { supabase, tenantId } = context;
+  const { supabase, tenantId, userRole } = context;
+
+  if (userRole !== "DONO") {
+    return NextResponse.json({ error: "Sem permissao para atualizar item" }, { status: 403 });
+  }
 
   const body = await request.json().catch(() => null);
   const parsed = updateItemSchema.safeParse(body);
@@ -236,7 +245,11 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     return context.error;
   }
 
-  const { supabase, tenantId } = context;
+  const { supabase, tenantId, userRole } = context;
+
+  if (userRole !== "DONO") {
+    return NextResponse.json({ error: "Sem permissao para remover item" }, { status: 403 });
+  }
 
   const { error } = await supabase
     .from("menu_items")

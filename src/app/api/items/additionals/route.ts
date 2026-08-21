@@ -4,6 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 
 type MembershipRow = {
     tenant_id: string;
+    role: "DONO" | "ATENDENTE" | "USUARIO";
 };
 
 type TenantRow = {
@@ -64,7 +65,7 @@ async function resolveTenantId() {
 
     const membershipsBase = supabase
         .from("memberships")
-        .select("tenant_id")
+        .select("tenant_id, role")
         .eq("user_id", user.id)
         .eq("active", true);
 
@@ -91,7 +92,11 @@ async function resolveTenantId() {
         };
     }
 
-    return { supabase, tenantId: memberships[0].tenant_id };
+    return {
+        supabase,
+        tenantId: memberships[0].tenant_id,
+        userRole: memberships[0].role,
+    };
 }
 
 export async function GET() {
@@ -101,7 +106,14 @@ export async function GET() {
         return context.error;
     }
 
-    const { supabase, tenantId } = context;
+    const { supabase, tenantId, userRole } = context;
+
+    if (userRole !== "DONO") {
+        return NextResponse.json(
+            { error: "Sem permissao para criar adicional" },
+            { status: 403 },
+        );
+    }
 
     const { data, error } = await supabase
         .from("menu_item_additionals")

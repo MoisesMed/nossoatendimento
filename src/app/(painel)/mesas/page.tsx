@@ -15,7 +15,7 @@ type Mesa = {
 };
 
 export default async function MesasPage() {
-  const { supabase, tenant, userRole } = await requireTenantContext();
+  const { supabase, tenant, userRole, user } = await requireTenantContext();
 
   if (userRole === "USUARIO") {
     redirect("/cardapio");
@@ -29,12 +29,22 @@ export default async function MesasPage() {
     .order("code", { ascending: true });
 
   const mesas = (mesasData ?? []) as Mesa[];
+  const currentUserName =
+    (typeof user.user_metadata?.full_name === "string" &&
+      user.user_metadata.full_name.trim()) ||
+    user.email ||
+    "Garcom";
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[1280px] flex-col pb-28">
       <section className="w-full px-4 pt-4 sm:px-6">
         <MesasBoardProviders>
-          <MesasBoard initialMesas={mesas} tenantId={tenant.id} />
+          <MesasBoard
+            initialMesas={mesas}
+            tenantId={tenant.id}
+            currentUserId={user.id}
+            currentUserName={currentUserName}
+          />
         </MesasBoardProviders>
       </section>
     </div>

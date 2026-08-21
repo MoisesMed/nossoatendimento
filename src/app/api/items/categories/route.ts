@@ -197,7 +197,7 @@ export async function POST(request: Request) {
 
   const { supabase, tenantId, userRole } = context;
 
-  if (userRole === "USUARIO") {
+  if (userRole !== "DONO") {
     return NextResponse.json({ error: "Sem permissao para criar categoria" }, { status: 403 });
   }
 
@@ -300,7 +300,7 @@ export async function PATCH(request: Request) {
 
   const { supabase, tenantId, userRole } = context;
 
-  if (userRole === "USUARIO") {
+  if (userRole !== "DONO") {
     return NextResponse.json({ error: "Sem permissao para reordenar categoria" }, { status: 403 });
   }
 
@@ -530,7 +530,7 @@ export async function DELETE(request: Request) {
 
   const { supabase, tenantId, userRole } = context;
 
-  if (userRole === "USUARIO") {
+  if (userRole !== "DONO") {
     return NextResponse.json({ error: "Sem permissao para remover categoria" }, { status: 403 });
   }
 

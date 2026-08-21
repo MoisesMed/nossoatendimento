@@ -10,11 +10,7 @@ const createEmployeeSchema = z.object({
         .trim()
         .min(3, "Nome completo invalido")
         .max(120, "Nome completo muito longo"),
-    phone: z
-        .string()
-        .trim()
-        .min(10, "Telefone invalido")
-        .max(20, "Telefone invalido"),
+    phone: z.string().trim().max(20, "Telefone invalido").optional(),
     password: z
         .string()
         .min(6, "Senha deve ter no minimo 6 caracteres")
@@ -41,18 +37,27 @@ export async function POST(request: Request) {
 
     const normalizedEmail = parsed.data.email.trim().toLowerCase();
     const normalizedFullName = parsed.data.fullName.trim();
-    const normalizedPhone = parsed.data.phone.replace(/\D/g, "");
+    const normalizedPhoneDigits = (parsed.data.phone ?? "").replace(/\D/g, "");
+    const normalizedPhone = normalizedPhoneDigits.length > 0 ? normalizedPhoneDigits : null;
 
-    if (normalizedPhone.length < 10 || normalizedPhone.length > 15) {
+    if (
+        normalizedPhone !== null &&
+        (normalizedPhone.length < 10 || normalizedPhone.length > 15)
+    ) {
         return NextResponse.json({ error: "Telefone invalido" }, { status: 400 });
     }
 
-    const { data: existingProfile, error: existingProfileError } = await supabase
+    const existingProfileQuery = supabase
         .from("tenant_user_profiles")
         .select("user_id, phone")
-        .eq("tenant_id", tenant.id)
-        .or(`email.eq.${normalizedEmail},phone.eq.${normalizedPhone}`)
-        .maybeSingle();
+        .eq("tenant_id", tenant.id);
+
+    const { data: existingProfile, error: existingProfileError } =
+        normalizedPhone
+            ? await existingProfileQuery
+                .or(`email.eq.${normalizedEmail},phone.eq.${normalizedPhone}`)
+                .maybeSingle()
+            : await existingProfileQuery.eq("email", normalizedEmail).maybeSingle();
 
     if (existingProfileError) {
         return NextResponse.json(
@@ -63,6 +68,7 @@ export async function POST(request: Request) {
 
     if (existingProfile) {
         const existingByPhone =
+            normalizedPhone !== null &&
             typeof existingProfile.phone === "string" &&
             existingProfile.phone === normalizedPhone;
 
@@ -136,6 +142,7 @@ export async function POST(request: Request) {
     }
 
     const createdUserId = createdUser.user.id;
+    const legacyPhoneFallback = `no-phone-${createdUserId}`;
 
     const { error: membershipError } = await supabase
         .from("memberships")
@@ -179,34 +186,58 @@ export async function POST(request: Request) {
         );
     }
 
-    const profilePayload = {
-        tenant_id: tenant.id,
-        user_id: createdUserId,
-        email: normalizedEmail,
-        phone: normalizedPhone,
-        full_name: normalizedFullName,
-    };
+    const saveProfile = async (phoneValue: string | null) => {
+        const profilePayload = {
+            tenant_id: tenant.id,
+            user_id: createdUserId,
+            email: normalizedEmail,
+            phone: phoneValue,
+            full_name: normalizedFullName,
+        };
 
-    let profileError: { message: string } | null = null;
+        if (existingCreatedProfile) {
+            const { error: profileUpdateError } = await supabase
+                .from("tenant_user_profiles")
+                .update({
+                    email: normalizedEmail,
+                    phone: phoneValue,
+                    full_name: normalizedFullName,
+                })
+                .eq("tenant_id", tenant.id)
+                .eq("user_id", createdUserId);
 
-    if (existingCreatedProfile) {
-        const { error: profileUpdateError } = await supabase
-            .from("tenant_user_profiles")
-            .update({
-                email: normalizedEmail,
-                phone: normalizedPhone,
-                full_name: normalizedFullName,
-            })
-            .eq("tenant_id", tenant.id)
-            .eq("user_id", createdUserId);
+            return profileUpdateError;
+        }
 
-        profileError = profileUpdateError;
-    } else {
         const { error: profileInsertError } = await supabaseAdmin
             .from("tenant_user_profiles")
             .insert(profilePayload);
 
-        profileError = profileInsertError;
+        return profileInsertError;
+    };
+
+    const shouldRetryWithLegacyPhoneFallback = (error: unknown) => {
+        if (!error || typeof error !== "object") {
+            return false;
+        }
+
+        const typedError = error as { message?: string; code?: string };
+        const message = (typedError.message ?? "").toLowerCase();
+
+        return (
+            typedError.code === "23502" ||
+            message.includes("null value in column \"phone\"")
+        );
+    };
+
+    let profileError = await saveProfile(normalizedPhone);
+
+    if (
+        profileError &&
+        normalizedPhone === null &&
+        shouldRetryWithLegacyPhoneFallback(profileError)
+    ) {
+        profileError = await saveProfile(legacyPhoneFallback);
     }
 
     if (profileError) {

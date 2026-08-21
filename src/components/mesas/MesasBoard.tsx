@@ -169,6 +169,13 @@ type QuickCatalogItemForm = {
   pricingType: "UNIDADE" | "PESO";
 };
 
+type MesaPresenceTrackPayload = {
+  userId: string;
+  userName: string;
+  mesaId: string | null;
+  updatedAt: string;
+};
+
 const CREATE_NEW_CATALOG_ITEM_VALUE = "__CREATE_NEW_CATALOG_ITEM__";
 const DAILY_COUVERT_STORAGE_PREFIX = "nossoatendimento-daily-couvert";
 const DAILY_COUVERT_ENABLED_STORAGE_PREFIX =
@@ -248,6 +255,45 @@ function parseNonNegativeNumber(value: string) {
   }
 
   return Math.max(0, numericValue);
+}
+
+function normalizePresenceName(rawName: string) {
+  const trimmed = rawName.trim();
+
+  if (!trimmed) {
+    return "Garçom";
+  }
+
+  return trimmed.length > 36 ? `${trimmed.slice(0, 36)}...` : trimmed;
+}
+
+function areMesaPresenceMapsEqual(
+  previous: Record<string, string[]>,
+  next: Record<string, string[]>,
+) {
+  const previousKeys = Object.keys(previous);
+  const nextKeys = Object.keys(next);
+
+  if (previousKeys.length !== nextKeys.length) {
+    return false;
+  }
+
+  for (const key of previousKeys) {
+    const previousNames = previous[key] ?? [];
+    const nextNames = next[key] ?? [];
+
+    if (previousNames.length !== nextNames.length) {
+      return false;
+    }
+
+    for (let index = 0; index < previousNames.length; index += 1) {
+      if (previousNames[index] !== nextNames[index]) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 async function fetchCatalogItemsOnce() {
@@ -618,6 +664,7 @@ function MesaCard({
   serviceChargeActionLabel,
   onToggleServiceCharge,
   onDelete,
+  attendingWaiterNames,
 }: {
   mesa: Mesa;
   menuOpen: boolean;
@@ -635,9 +682,11 @@ function MesaCard({
   serviceChargeActionLabel: string;
   onToggleServiceCharge: (mesa: Mesa) => void;
   onDelete: (mesa: Mesa) => void;
+  attendingWaiterNames: string[];
 }) {
   const style = statusStyles[mesa.status];
   const StatusIcon = style.icon;
+  const hasPresence = attendingWaiterNames.length > 0;
   const menuRootRef = useRef<HTMLDivElement | null>(null);
   const [menuHorizontalAlign, setMenuHorizontalAlign] = useState<
     "open-left" | "open-right"
@@ -680,7 +729,7 @@ function MesaCard({
 
   return (
     <div
-      className={`relative min-h-32 rounded-xl border p-2 shadow-sm ${style.card}`}
+      className={`relative min-h-32 rounded-xl border p-2 shadow-sm ${style.card} ${hasPresence ? "ring-2 ring-sky-500/70" : ""}`}
     >
       {hasExternalChange ? (
         <span className="absolute left-2 top-2 z-30 h-2.5 w-2.5 rounded-full bg-rose-600 ring-2 ring-white" />
@@ -772,6 +821,11 @@ function MesaCard({
         <p className="mt-0.5 text-xs text-[var(--app-muted)]">
           {mesa.seats} {mesa.seats === 1 ? "cadeira" : "cadeiras"}
         </p>
+        {hasPresence ? (
+          <p className="mt-1 text-[11px] font-semibold text-sky-700">
+            Garçom: {attendingWaiterNames.join(", ")}
+          </p>
+        ) : null}
         {waitingItemsCount > 0 || deliveredItemsCount > 0 ? (
           <p className="mt-1 text-[11px] font-medium text-[var(--app-muted)]">
             {waitingItemsCount} aguardando · {deliveredItemsCount} enviados
@@ -785,9 +839,13 @@ function MesaCard({
 export default function MesasBoard({
   initialMesas,
   tenantId,
+  currentUserId,
+  currentUserName,
 }: {
   initialMesas: Mesa[];
   tenantId: string;
+  currentUserId: string;
+  currentUserName: string;
 }) {
   const todayKey = new Date().toISOString().slice(0, 10);
   const [mesas, setMesas] = useState<Mesa[]>(initialMesas);
@@ -889,6 +947,9 @@ export default function MesasBoard({
   const [mesaExternalChangeById, setMesaExternalChangeById] = useState<
     Record<string, true>
   >({});
+  const [mesaPresenceById, setMesaPresenceById] = useState<
+    Record<string, string[]>
+  >({});
   const [syncingMesaItemsById, setSyncingMesaItemsById] = useState<
     Record<string, true>
   >({});
@@ -911,6 +972,9 @@ export default function MesasBoard({
   const localMesaChangeUntilRef = useRef<Record<string, number>>({});
   const mesaItemsSyncCountByIdRef = useRef<Record<string, number>>({});
   const realtimeToastDedupRef = useRef<Record<string, number>>({});
+  const presenceChannelRef = useRef<{
+    track: (payload: MesaPresenceTrackPayload) => Promise<unknown>;
+  } | null>(null);
 
   const startMesaItemsSync = (mesaId: string) => {
     const currentCount = mesaItemsSyncCountByIdRef.current[mesaId] ?? 0;
@@ -2764,6 +2828,94 @@ export default function MesasBoard({
       }
     };
 
+    const syncPresenceState = (rawPresenceState: Record<string, unknown>) => {
+      const latestPresenceByUserId = new Map<
+        string,
+        {
+          mesaId: string | null;
+          userName: string;
+          updatedAtMs: number;
+        }
+      >();
+
+      Object.values(rawPresenceState).forEach((presenceEntries) => {
+        if (!Array.isArray(presenceEntries)) {
+          return;
+        }
+
+        presenceEntries.forEach((entry) => {
+          if (!entry || typeof entry !== "object") {
+            return;
+          }
+
+          const typedEntry = entry as Partial<MesaPresenceTrackPayload>;
+
+          if (!typedEntry.userId || typeof typedEntry.userId !== "string") {
+            return;
+          }
+
+          const normalizedName = normalizePresenceName(
+            typeof typedEntry.userName === "string"
+              ? typedEntry.userName
+              : "Garçom",
+          );
+
+          const updatedAtMs = Number.isFinite(
+            Date.parse(typedEntry.updatedAt ?? ""),
+          )
+            ? Date.parse(typedEntry.updatedAt ?? "")
+            : 0;
+
+          const previous = latestPresenceByUserId.get(typedEntry.userId);
+
+          if (previous && previous.updatedAtMs > updatedAtMs) {
+            return;
+          }
+
+          latestPresenceByUserId.set(typedEntry.userId, {
+            mesaId:
+              typeof typedEntry.mesaId === "string" && typedEntry.mesaId
+                ? typedEntry.mesaId
+                : null,
+            userName: normalizedName,
+            updatedAtMs,
+          });
+        });
+      });
+
+      const userNameByMesaByUserId = new Map<string, Map<string, string>>();
+
+      latestPresenceByUserId.forEach((presence, userId) => {
+        if (!presence.mesaId || userId === currentUserId) {
+          return;
+        }
+
+        const usersById =
+          userNameByMesaByUserId.get(presence.mesaId) ??
+          new Map<string, string>();
+        usersById.set(userId, presence.userName);
+        userNameByMesaByUserId.set(presence.mesaId, usersById);
+      });
+
+      const nextPresenceByMesaId: Record<string, string[]> = {};
+
+      userNameByMesaByUserId.forEach((usersById, mesaId) => {
+        const names = Array.from(usersById.values()).sort((a, b) =>
+          a.localeCompare(b),
+        );
+
+        if (names.length > 0) {
+          nextPresenceByMesaId[mesaId] = names;
+        }
+      });
+
+      setMesaPresenceById((previous) =>
+        areMesaPresenceMapsEqual(previous, nextPresenceByMesaId)
+          ? previous
+          : nextPresenceByMesaId,
+      );
+    };
+
     const supabase = getSupabaseBrowserClient();
     console.info(`${realtimeLogPrefix} creating channel`, {
       tenantId,
@@ -2803,6 +2955,50 @@ export default function MesasBoard({
         }
       });
 
+    const presenceChannel = supabase
+      .channel(`mesas-board-presence-${tenantId}`, {
+        config: {
+          presence: {
+            key: `${currentUserId}-${crypto.randomUUID()}`,
+          },
+        },
+      })
+      .on("presence", { event: "sync" }, () => {
+        syncPresenceState(
+          presenceChannel.presenceState() as unknown as Record<string, unknown>,
+        );
+      })
+      .on("presence", { event: "join" }, () => {
+        syncPresenceState(
+          presenceChannel.presenceState() as unknown as Record<string, unknown>,
+        );
+      })
+      .on("presence", { event: "leave" }, () => {
+        syncPresenceState(
+          presenceChannel.presenceState() as unknown as Record<string, unknown>,
+        );
+      })
+      .subscribe((status) => {
+        if (!isMounted) {
+          return;
+        }
+
+        if (status !== "SUBSCRIBED") {
+          return;
+        }
+
+        const initialPayload: MesaPresenceTrackPayload = {
+          userId: currentUserId,
+          userName: normalizePresenceName(currentUserName),
+          mesaId: activeMesaDetailIdRef.current,
+          updatedAt: new Date().toISOString(),
+        };
+
+        void presenceChannel.track(initialPayload);
+      });
+
+    presenceChannelRef.current = presenceChannel;
+
     void loadInitialItemsSnapshot();
 
     return () => {
@@ -2819,9 +3015,28 @@ export default function MesasBoard({
         window.clearTimeout(itemsFallbackTimeout);
       }
 
+      presenceChannelRef.current = null;
+      setMesaPresenceById({});
+
       void supabase.removeChannel(channel);
+      void supabase.removeChannel(presenceChannel);
     };
-  }, [tenantId]);
+  }, [tenantId, currentUserId, currentUserName]);
+
+  useEffect(() => {
+    if (!presenceChannelRef.current) {
+      return;
+    }
+
+    const payload: MesaPresenceTrackPayload = {
+      userId: currentUserId,
+      userName: normalizePresenceName(currentUserName),
+      mesaId: mesaForDetail?.id ?? null,
+      updatedAt: new Date().toISOString(),
+    };
+
+    void presenceChannelRef.current.track(payload);
+  }, [mesaForDetail?.id, currentUserId, currentUserName]);
 
   useEffect(() => {
     let isMounted = true;
@@ -3557,6 +3772,7 @@ export default function MesasBoard({
       setOpenCloseComandaConfirm(false);
       setCloseComandaObservation("");
       setIsPaymentModalOpen(false);
+      setMesaForDetail(null);
 
       if (options?.deleteMesaAfterClose) {
         await deleteMesaMutation.mutateAsync(mesaId);
@@ -3708,6 +3924,7 @@ export default function MesasBoard({
               }
               onToggleServiceCharge={handleToggleMesaServiceCharge}
               onDelete={handleDeleteMesa}
+              attendingWaiterNames={mesaPresenceById[mesa.id] ?? []}
             />
           );
         })}

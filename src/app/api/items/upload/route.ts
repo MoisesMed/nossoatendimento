@@ -63,7 +63,7 @@ async function resolveTenantId() {
 
   const membership = typedMemberships[0];
 
-  if (membership.role !== "DONO" && membership.role !== "ATENDENTE") {
+  if (membership.role !== "DONO") {
     return {
       error: NextResponse.json(
         { error: "Sem permissao para subir imagem de item" },
