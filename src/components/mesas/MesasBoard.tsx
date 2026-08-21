@@ -2668,7 +2668,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
 
       {mesaForDetail ? (
         <div className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
-          <div className="relative max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-xl sm:p-5">
+          <div className="relative max-h-[85vh] w-full overflow-y-auto rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] pb-4 pr-4 pl-4 pt-0 shadow-2xl sm:max-w-xl sm:pt-2">
             {(() => {
               const detailStyle = statusStyles[mesaForDetail.status];
               const DetailIcon = detailStyle.icon;
@@ -2682,19 +2682,10 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                     </div>
                   ) : null}
 
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[12px] font-medium text-[var(--app-muted)]">
+                  <div className="sticky top-0 z-30 mb-2 -mx-4 flex items-center justify-between gap-3 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 px-4 pb-1.5 backdrop-blur-sm">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-medium leading-none text-[var(--app-muted)]">
                         Mesa {mesaForDetail.code}
-                      </p>
-                      <h2 className="text-2xl font-semibold leading-tight text-[var(--app-text)]">
-                        {mesaForDetail.name}
-                      </h2>
-                      <p
-                        className={`mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium ${detailStyle.statusChip}`}
-                      >
-                        <DetailIcon className="h-3.5 w-3.5" />
-                        {detailStyle.label}
                       </p>
                     </div>
 
@@ -2706,11 +2697,23 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                         setIsPagamentoMenuOpen(false);
                         setMesaForDetail(null);
                       }}
-                      className="rounded-full p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="shrink-0 rounded-full p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
                       aria-label="Fechar modal"
                     >
-                      <X className="h-5 w-5" />
+                      <X className="h-6 w-6 " />
                     </button>
+                  </div>
+
+                  <div className="mb-3">
+                    <h2 className="text-2xl font-semibold leading-tight text-[var(--app-text)]">
+                      {mesaForDetail.name}
+                    </h2>
+                    <p
+                      className={`mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium ${detailStyle.statusChip}`}
+                    >
+                      <DetailIcon className="h-3.5 w-3.5" />
+                      {detailStyle.label}
+                    </p>
                   </div>
 
                   <div className="mb-4 flex items-center gap-2">
