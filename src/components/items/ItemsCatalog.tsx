@@ -32,7 +32,7 @@ import {
 
 type MenuItem = {
   id: string;
-  code: number;
+  code: number | string | null;
   name: string;
   category: string;
   description: string | null;
@@ -156,6 +156,19 @@ function formatPriceLabel(value: number) {
 function formatItemPriceLabel(value: number, pricingType: "UNIDADE" | "PESO") {
   const baseLabel = formatPriceLabel(value);
   return pricingType === "PESO" ? `${baseLabel}/KG` : baseLabel;
+}
+
+function getItemDisplayCode(item: {
+  code?: number | string | null;
+  id?: string | null;
+}) {
+  const rawCode = item.code;
+
+  if (rawCode === null || rawCode === undefined || rawCode === "") {
+    return item.id ?? "";
+  }
+
+  return String(rawCode);
 }
 
 function areCategoryOrdersEqual(left: string[], right: string[]) {
@@ -2198,7 +2211,7 @@ export default function ItemsCatalog({
 
     const filteredItems = sourceItems.filter((item) => {
       const searchable =
-        `${item.code} ${item.name} ${item.description ?? ""} ${item.category}`
+        `${getItemDisplayCode(item)} ${item.name} ${item.description ?? ""} ${item.category}`
           .toLowerCase()
           .normalize("NFD")
           .replace(/\p{Diacritic}/gu, "");
@@ -2696,7 +2709,7 @@ export default function ItemsCatalog({
             (item) => `
               <li class="item-row">
                 <div class="item-main-row">
-                  <span class="item-name">${item.code} - ${escapeHtml(item.name)}</span>
+                  <span class="item-name">${getItemDisplayCode(item)} - ${escapeHtml(item.name)}</span>
                   <span class="item-price">${item.pricingType === "PESO" ? `${formatCurrency(item.price)}/KG` : formatCurrency(item.price)}</span>
                 </div>
                 ${item.description ? `<p class="item-description">${escapeHtml(item.description)}</p>` : ""}
@@ -3472,7 +3485,7 @@ export default function ItemsCatalog({
                           }
                         >
                           <Title as="h3" size="card" className="line-clamp-2">
-                            {`${item.code} - ${item.name}`}
+                            {`${getItemDisplayCode(item)} - ${item.name}`}
                           </Title>
 
                           <Text
@@ -4168,7 +4181,7 @@ export default function ItemsCatalog({
                         .sort((a, b) => a.name.localeCompare(b.name))
                         .map((item) => (
                           <option key={item.id} value={item.id}>
-                            {`${item.code} - ${item.name}`}
+                            {`${getItemDisplayCode(item)} - ${item.name}`}
                           </option>
                         ))}
                     </FormSelect>
@@ -4275,7 +4288,7 @@ export default function ItemsCatalog({
                           .sort((a, b) => a.name.localeCompare(b.name))
                           .map((item) => (
                             <option key={item.id} value={item.id}>
-                              {`${item.code} - ${item.name}`}
+                              {`${getItemDisplayCode(item)} - ${item.name}`}
                             </option>
                           ))}
                       </FormSelect>
@@ -4420,7 +4433,7 @@ export default function ItemsCatalog({
             <div className="mb-4 flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <Title as="h2" size="modal" className="line-clamp-2">
-                  {`${previewItem.code} - ${previewItem.name}`}
+                  {`${getItemDisplayCode(previewItem)} - ${previewItem.name}`}
                 </Title>
                 <Text tone="muted" size="sm" className="mt-1">
                   Categoria: {previewItem.category}

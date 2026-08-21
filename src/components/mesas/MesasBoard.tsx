@@ -26,9 +26,11 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "react-toastify";
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import MesaPrintActions from "@/components/mesas/MesaPrintActions";
 import ConfirmationModal from "@/components/ui/ConfirmationModal";
 import AppModal from "@/components/ui/AppModal";
+import { getSupabaseBrowserClient } from "@/lib/supabaseBrowser";
 
 type MesaStatus = "VAZIA" | "OCUPADA" | "EM_PREPARO" | "AGUARDANDO_PAGAMENTO";
 
@@ -50,6 +52,7 @@ type CreateMesaInput = {
 
 type MesaItem = {
   id: string;
+  mesaId?: string;
   name: string;
   quantity: number;
   price: number;
@@ -59,6 +62,32 @@ type MesaItem = {
   weightKg?: number;
   additionalTitles?: string[];
   additionalTotal?: number;
+};
+
+type RestaurantTableRealtimeRow = {
+  id: string;
+  tenant_id?: string;
+  code: number;
+  name: string;
+  seats: number;
+  status: MesaStatus;
+  notes: string | null;
+  active: boolean;
+};
+
+type RestaurantTableItemRealtimeRow = {
+  id: string;
+  tenant_id?: string;
+  table_id: string;
+  name: string;
+  quantity: number;
+  price: number;
+  original_price: number | null;
+  delivered: boolean;
+  pricing_type: "UNIDADE" | "PESO" | null;
+  weight_kg: number | null;
+  additional_titles: string[] | null;
+  additional_total: number | null;
 };
 
 type PaymentMethod = "CREDITO" | "DEBITO" | "PIX" | "DINHEIRO";
@@ -277,6 +306,65 @@ async function fetchCatalogItemAdditionalsOnce() {
   }
 
   return catalogItemAdditionalsRequest;
+}
+
+async function fetchMesaItemsSnapshot() {
+  const response = await fetch("/api/mesas/items", { method: "GET" });
+  const result = (await response.json().catch(() => ({}))) as {
+    data?: MesaItem[];
+    error?: string;
+  };
+
+  if (!response.ok || !result.data) {
+    throw new Error(
+      result.error ?? "Falha ao atualizar itens das mesas em tempo real.",
+    );
+  }
+
+  return result.data;
+}
+
+async function fetchMesasSnapshot() {
+  const response = await fetch("/api/mesas", { method: "GET" });
+  const result = (await response.json().catch(() => ({}))) as {
+    data?: Mesa[];
+    error?: string;
+  };
+
+  if (!response.ok || !result.data) {
+    throw new Error(result.error ?? "Falha ao atualizar mesas em tempo real.");
+  }
+
+  return result.data;
+}
+
+function mapRealtimeTableToMesa(row: RestaurantTableRealtimeRow): Mesa {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    seats: row.seats,
+    status: row.status,
+    notes: row.notes,
+  };
+}
+
+function mapRealtimeTableItemToMesaItem(
+  row: RestaurantTableItemRealtimeRow,
+): MesaItem {
+  return {
+    id: row.id,
+    mesaId: row.table_id,
+    name: row.name,
+    quantity: row.quantity,
+    price: row.price,
+    originalPrice: row.original_price,
+    delivered: row.delivered,
+    pricingType: row.pricing_type ?? undefined,
+    weightKg: row.weight_kg ?? undefined,
+    additionalTitles: row.additional_titles ?? [],
+    additionalTotal: row.additional_total ?? undefined,
+  };
 }
 
 function ItemDropdownIndicator(
@@ -515,6 +603,9 @@ function MesaCard({
   menuOpen,
   isBusy,
   isStatusUpdating,
+  hasExternalChange,
+  waitingItemsCount,
+  deliveredItemsCount,
   onOpen,
   onToggleMenu,
   onOpenStatus,
@@ -529,6 +620,9 @@ function MesaCard({
   menuOpen: boolean;
   isBusy: boolean;
   isStatusUpdating: boolean;
+  hasExternalChange: boolean;
+  waitingItemsCount: number;
+  deliveredItemsCount: number;
   onOpen: (mesa: Mesa) => void;
   onToggleMenu: (mesaId: string) => void;
   onOpenStatus: (mesa: Mesa) => void;
@@ -585,6 +679,9 @@ function MesaCard({
     <div
       className={`relative min-h-32 rounded-xl border p-2 shadow-sm ${style.card}`}
     >
+      {hasExternalChange ? (
+        <span className="absolute left-2 top-2 z-30 h-2.5 w-2.5 rounded-full bg-rose-600 ring-2 ring-white" />
+      ) : null}
       <div
         ref={menuRootRef}
         data-mesa-menu-root="true"
@@ -672,12 +769,23 @@ function MesaCard({
         <p className="mt-0.5 text-xs text-[var(--app-muted)]">
           {mesa.seats} {mesa.seats === 1 ? "cadeira" : "cadeiras"}
         </p>
+        {waitingItemsCount > 0 || deliveredItemsCount > 0 ? (
+          <p className="mt-1 text-[11px] font-medium text-[var(--app-muted)]">
+            {waitingItemsCount} aguardando · {deliveredItemsCount} enviados
+          </p>
+        ) : null}
       </button>
     </div>
   );
 }
 
-export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
+export default function MesasBoard({
+  initialMesas,
+  tenantId,
+}: {
+  initialMesas: Mesa[];
+  tenantId: string;
+}) {
   const todayKey = new Date().toISOString().slice(0, 10);
   const [mesas, setMesas] = useState<Mesa[]>(initialMesas);
   const [openLegendModal, setOpenLegendModal] = useState(false);
@@ -705,6 +813,11 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     mesaName?: string;
   } | null>(null);
   const [serviceChargeDraftValue, setServiceChargeDraftValue] = useState("10");
+  const [pendingDisableConfig, setPendingDisableConfig] = useState<{
+    type: "couvert" | "service-charge";
+    scope: "global" | "mesa";
+    mesa?: Mesa;
+  } | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isQuickCreateItemModalOpen, setIsQuickCreateItemModalOpen] =
     useState(false);
@@ -769,6 +882,204 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     seats: "4",
     notes: "",
   });
+  const [mesaExternalChangeById, setMesaExternalChangeById] = useState<
+    Record<string, true>
+  >({});
+  const [syncingMesaItemsById, setSyncingMesaItemsById] = useState<
+    Record<string, true>
+  >({});
+  const isAnyModalOpen =
+    openLegendModal ||
+    openCreateModal ||
+    Boolean(mesaForEdit) ||
+    Boolean(mesaForDetail) ||
+    Boolean(couvertModalState) ||
+    Boolean(serviceChargeModalState) ||
+    Boolean(mesaPendingDelete) ||
+    Boolean(mesaItemPendingDelete) ||
+    isPaymentModalOpen ||
+    openCloseComandaConfirm ||
+    isAddItemModalOpen ||
+    isQuickCreateItemModalOpen;
+  const mesasRef = useRef<Mesa[]>(initialMesas);
+  const activeMesaDetailIdRef = useRef<string | null>(null);
+  const mesaItemsByMesaIdRef = useRef<Record<string, MesaItem[]>>({});
+  const localMesaChangeUntilRef = useRef<Record<string, number>>({});
+  const mesaItemsSyncCountByIdRef = useRef<Record<string, number>>({});
+  const realtimeToastDedupRef = useRef<Record<string, number>>({});
+
+  const startMesaItemsSync = (mesaId: string) => {
+    const currentCount = mesaItemsSyncCountByIdRef.current[mesaId] ?? 0;
+    mesaItemsSyncCountByIdRef.current[mesaId] = currentCount + 1;
+
+    setSyncingMesaItemsById((previous) => {
+      if (previous[mesaId]) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        [mesaId]: true,
+      };
+    });
+  };
+
+  const finishMesaItemsSync = (mesaId: string) => {
+    const currentCount = mesaItemsSyncCountByIdRef.current[mesaId] ?? 0;
+
+    if (currentCount <= 1) {
+      delete mesaItemsSyncCountByIdRef.current[mesaId];
+
+      setSyncingMesaItemsById((previous) => {
+        if (!previous[mesaId]) {
+          return previous;
+        }
+
+        const next = { ...previous };
+        delete next[mesaId];
+        return next;
+      });
+      return;
+    }
+
+    mesaItemsSyncCountByIdRef.current[mesaId] = currentCount - 1;
+  };
+
+  const markLocalMesaChange = (mesaId: string) => {
+    localMesaChangeUntilRef.current[mesaId] = Date.now() + 5000;
+  };
+
+  const isLikelyLocalMesaChange = (mesaId: string) => {
+    const expiration = localMesaChangeUntilRef.current[mesaId];
+
+    if (!expiration) {
+      return false;
+    }
+
+    if (expiration < Date.now()) {
+      delete localMesaChangeUntilRef.current[mesaId];
+      return false;
+    }
+
+    return true;
+  };
+
+  const markMesaAsExternallyChanged = (mesaId: string) => {
+    if (activeMesaDetailIdRef.current === mesaId) {
+      return;
+    }
+
+    if (isLikelyLocalMesaChange(mesaId)) {
+      return;
+    }
+
+    setMesaExternalChangeById((previous) => {
+      if (previous[mesaId]) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        [mesaId]: true,
+      };
+    });
+  };
+
+  const clearMesaExternalChange = (mesaId: string) => {
+    setMesaExternalChangeById((previous) => {
+      if (!previous[mesaId]) {
+        return previous;
+      }
+
+      const next = { ...previous };
+      delete next[mesaId];
+      return next;
+    });
+  };
+
+  const getMesaLabelById = (mesaId: string) => {
+    const mesa = mesasRef.current.find((item) => item.id === mesaId);
+
+    if (!mesa) {
+      return "mesa";
+    }
+
+    return `${mesa.code} (${mesa.name})`;
+  };
+
+  const notifyRealtimeChange = (
+    dedupKey: string,
+    message: string,
+    options?: {
+      mesaId?: string;
+      allowNavigateToMesa?: boolean;
+    },
+  ) => {
+    const now = Date.now();
+    const lastNotificationAt = realtimeToastDedupRef.current[dedupKey] ?? 0;
+
+    if (now - lastNotificationAt < 1500) {
+      return;
+    }
+
+    realtimeToastDedupRef.current[dedupKey] = now;
+
+    if (options?.mesaId && options.allowNavigateToMesa !== false) {
+      toast.info(message, {
+        onClick: () => {
+          const mesa = mesasRef.current.find(
+            (item) => item.id === options.mesaId,
+          );
+
+          if (!mesa) {
+            return;
+          }
+
+          handleOpenMesaDetail(mesa);
+        },
+      });
+      return;
+    }
+
+    toast.info(message);
+  };
+
+  useEffect(() => {
+    activeMesaDetailIdRef.current = mesaForDetail?.id ?? null;
+  }, [mesaForDetail]);
+
+  useEffect(() => {
+    mesasRef.current = mesas;
+  }, [mesas]);
+
+  useEffect(() => {
+    mesaItemsByMesaIdRef.current = mesaItemsByMesaId;
+  }, [mesaItemsByMesaId]);
+
+  useEffect(() => {
+    if (!isAnyModalOpen) {
+      return;
+    }
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyPaddingRight = document.body.style.paddingRight;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const scrollbarCompensation =
+      window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    if (scrollbarCompensation > 0) {
+      document.body.style.paddingRight = `${scrollbarCompensation}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.paddingRight = previousBodyPaddingRight;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [isAnyModalOpen]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -910,6 +1221,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       return result.data;
     },
     onSuccess: (newMesa) => {
+      markLocalMesaChange(newMesa.id);
       setMesas((prev) => [...prev, newMesa].sort((a, b) => a.code - b.code));
       setFormData({ code: "", name: "", seats: "4", notes: "" });
       setOpenCreateModal(false);
@@ -1009,7 +1321,36 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     },
   });
 
+  const refreshMesaItemsSilently = async (mesaId: string) => {
+    startMesaItemsSync(mesaId);
+
+    try {
+      const response = await fetch(`/api/mesas/${mesaId}/items`, {
+        method: "GET",
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        data?: MesaItem[];
+      };
+
+      if (!response.ok || !result.data) {
+        return;
+      }
+
+      setMesaItemsByMesaId((prev) => ({
+        ...prev,
+        [mesaId]: result.data ?? [],
+      }));
+    } catch {
+      return;
+    } finally {
+      finishMesaItemsSync(mesaId);
+    }
+  };
+
   const createMesaItemMutation = useMutation({
+    onMutate: ({ mesaId }) => {
+      markLocalMesaChange(mesaId);
+    },
     mutationFn: async ({
       mesaId,
       payload,
@@ -1044,6 +1385,9 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   });
 
   const updateMesaItemMutation = useMutation({
+    onMutate: ({ mesaId }) => {
+      markLocalMesaChange(mesaId);
+    },
     mutationFn: async ({
       mesaId,
       itemId,
@@ -1082,6 +1426,9 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   });
 
   const deleteMesaItemMutation = useMutation({
+    onMutate: ({ mesaId }) => {
+      markLocalMesaChange(mesaId);
+    },
     mutationFn: async ({
       mesaId,
       itemId,
@@ -1123,6 +1470,9 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   });
 
   const clearMesaItemsMutation = useMutation({
+    onMutate: (mesaId: string) => {
+      markLocalMesaChange(mesaId);
+    },
     mutationFn: async (mesaId: string) => {
       const response = await fetch(`/api/mesas/${mesaId}/items`, {
         method: "DELETE",
@@ -1138,6 +1488,9 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   });
 
   const updateMesaMutation = useMutation({
+    onMutate: ({ mesaId }) => {
+      markLocalMesaChange(mesaId);
+    },
     mutationFn: async ({
       mesaId,
       payload,
@@ -1180,6 +1533,9 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
   });
 
   const deleteMesaMutation = useMutation({
+    onMutate: (mesaId: string) => {
+      markLocalMesaChange(mesaId);
+    },
     mutationFn: async (mesaId: string) => {
       const response = await fetch(`/api/mesas/${mesaId}`, {
         method: "DELETE",
@@ -1197,6 +1553,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       setMesaForDetail((prev) => (prev?.id === mesaId ? null : prev));
       setMesaForEdit((prev) => (prev?.id === mesaId ? null : prev));
       setMenuMesaId(null);
+      clearMesaExternalChange(mesaId);
       toast.success("Mesa removida com sucesso.");
     },
     onError: (error) => {
@@ -1212,7 +1569,27 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     () => (mesaForDetail ? (mesaItemsByMesaId[mesaForDetail.id] ?? []) : []),
     [mesaForDetail, mesaItemsByMesaId],
   );
-  const isLoadingMesaItems = loadMesaItemsMutation.isPending;
+  const mesaItemsResumeByMesaId = useMemo(() => {
+    const resume: Record<string, { waiting: number; delivered: number }> = {};
+
+    Object.entries(mesaItemsByMesaId).forEach(([mesaId, items]) => {
+      let waiting = 0;
+      let delivered = 0;
+
+      items.forEach((item) => {
+        if (item.delivered) {
+          delivered += item.quantity;
+          return;
+        }
+
+        waiting += item.quantity;
+      });
+
+      resume[mesaId] = { waiting, delivered };
+    });
+
+    return resume;
+  }, [mesaItemsByMesaId]);
   const isAnyMesaMutationPending =
     createMesaMutation.isPending ||
     updateMesaMutation.isPending ||
@@ -1223,6 +1600,10 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     clearMesaItemsMutation.isPending;
   const isCreateModalBusy = createMesaMutation.isPending;
   const isEditModalBusy = updateMesaMutation.isPending;
+  const isLoadingMesaItems = loadMesaItemsMutation.isPending;
+  const isMesaDetailSyncing =
+    !!mesaForDetail && Boolean(syncingMesaItemsById[mesaForDetail.id]);
+  const isAnyMesaItemsSyncing = Object.keys(syncingMesaItemsById).length > 0;
   const isDetailStatusBusy =
     !!mesaForDetail &&
     statusPendingMesaId === mesaForDetail.id &&
@@ -1655,6 +2036,700 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
 
   useEffect(() => {
     let isMounted = true;
+    const realtimeLogPrefix = "[MesasRealtime]";
+    let mesasFallbackTimeout: number | null = null;
+    let itemsFallbackTimeout: number | null = null;
+    let isRefreshingMesasFallback = false;
+    let isRefreshingItemsFallback = false;
+
+    const refreshMesasFromFallback = async () => {
+      if (!isMounted || isRefreshingMesasFallback) {
+        return;
+      }
+
+      isRefreshingMesasFallback = true;
+
+      try {
+        const nextMesas = await fetchMesasSnapshot();
+
+        if (!isMounted) {
+          return;
+        }
+
+        const previousMesasMap = new Map(
+          mesasRef.current.map((mesa) => [mesa.id, mesa]),
+        );
+        const nextMesasMap = new Map(nextMesas.map((mesa) => [mesa.id, mesa]));
+        const changedMesaIds = new Set<string>();
+
+        nextMesas.forEach((mesa) => {
+          const previousMesa = previousMesasMap.get(mesa.id);
+
+          if (!previousMesa) {
+            changedMesaIds.add(mesa.id);
+
+            if (!isLikelyLocalMesaChange(mesa.id)) {
+              notifyRealtimeChange(
+                `mesa-insert-fallback-${mesa.id}`,
+                `Mesa ${mesa.code} (${mesa.name}) foi criada.`,
+                { mesaId: mesa.id },
+              );
+            }
+
+            return;
+          }
+
+          if (
+            previousMesa.code !== mesa.code ||
+            previousMesa.name !== mesa.name ||
+            previousMesa.seats !== mesa.seats ||
+            previousMesa.status !== mesa.status ||
+            previousMesa.notes !== mesa.notes
+          ) {
+            changedMesaIds.add(mesa.id);
+
+            if (
+              previousMesa.status !== mesa.status &&
+              !isLikelyLocalMesaChange(mesa.id)
+            ) {
+              notifyRealtimeChange(
+                `mesa-status-fallback-${mesa.id}-${mesa.status}`,
+                `Status da mesa ${mesa.code} (${mesa.name}) mudou para ${statusStyles[mesa.status].label}.`,
+                { mesaId: mesa.id },
+              );
+            }
+          }
+        });
+
+        previousMesasMap.forEach((mesa, mesaId) => {
+          if (!nextMesasMap.has(mesaId)) {
+            changedMesaIds.add(mesaId);
+
+            if (!isLikelyLocalMesaChange(mesaId)) {
+              notifyRealtimeChange(
+                `mesa-delete-fallback-${mesaId}`,
+                `Mesa ${mesa.code} (${mesa.name}) foi deletada.`,
+                { mesaId, allowNavigateToMesa: false },
+              );
+            }
+          }
+        });
+
+        setMesas(nextMesas);
+        setMesaForDetail((previousMesa) => {
+          if (!previousMesa) {
+            return previousMesa;
+          }
+
+          return nextMesas.find((mesa) => mesa.id === previousMesa.id) ?? null;
+        });
+
+        changedMesaIds.forEach((mesaId) => {
+          markMesaAsExternallyChanged(mesaId);
+        });
+      } catch (error) {
+        console.error(
+          `${realtimeLogPrefix} mesas fallback refresh failed`,
+          error,
+        );
+      } finally {
+        isRefreshingMesasFallback = false;
+      }
+    };
+
+    const refreshItemsFromFallback = async () => {
+      if (!isMounted || isRefreshingItemsFallback) {
+        return;
+      }
+
+      isRefreshingItemsFallback = true;
+
+      try {
+        const nextItems = await fetchMesaItemsSnapshot();
+
+        if (!isMounted) {
+          return;
+        }
+
+        const groupedItems = nextItems.reduce<Record<string, MesaItem[]>>(
+          (accumulator, item) => {
+            if (!item.mesaId) {
+              return accumulator;
+            }
+
+            if (!accumulator[item.mesaId]) {
+              accumulator[item.mesaId] = [];
+            }
+
+            accumulator[item.mesaId].push(item);
+            return accumulator;
+          },
+          {},
+        );
+
+        const snapshotItemSignature = (item: MesaItem) =>
+          [
+            item.id,
+            item.quantity,
+            item.price,
+            item.originalPrice ?? "",
+            item.delivered ? 1 : 0,
+            item.pricingType ?? "",
+            item.weightKg ?? "",
+            (item.additionalTitles ?? []).join("|"),
+            item.additionalTotal ?? "",
+          ].join("::");
+
+        const signatureForList = (items: MesaItem[]) =>
+          items.map(snapshotItemSignature).join("##");
+
+        const previousMap = mesaItemsByMesaIdRef.current;
+        const changedMesaIds = new Set<string>();
+        const allMesaIds = new Set([
+          ...Object.keys(previousMap),
+          ...Object.keys(groupedItems),
+        ]);
+
+        allMesaIds.forEach((mesaId) => {
+          const previousItems = previousMap[mesaId] ?? [];
+          const nextMesaItems = groupedItems[mesaId] ?? [];
+
+          const previousIds = new Set(previousItems.map((item) => item.id));
+          const nextIds = new Set(nextMesaItems.map((item) => item.id));
+          const previousItemsById = new Map(
+            previousItems.map((item) => [item.id, item]),
+          );
+
+          const addedCount = nextMesaItems.reduce((count, item) => {
+            if (previousIds.has(item.id)) {
+              return count;
+            }
+
+            return count + 1;
+          }, 0);
+
+          const removedCount = previousItems.reduce((count, item) => {
+            if (nextIds.has(item.id)) {
+              return count;
+            }
+
+            return count + 1;
+          }, 0);
+
+          const editedCount = nextMesaItems.reduce((count, item) => {
+            const previousItem = previousItemsById.get(item.id);
+
+            if (!previousItem) {
+              return count;
+            }
+
+            if (
+              previousItem.quantity !== item.quantity ||
+              previousItem.price !== item.price
+            ) {
+              return count + 1;
+            }
+
+            return count;
+          }, 0);
+
+          if (addedCount > 0 && !isLikelyLocalMesaChange(mesaId)) {
+            const mesaLabel = getMesaLabelById(mesaId);
+            const itemsLabel = addedCount === 1 ? "item" : "itens";
+
+            notifyRealtimeChange(
+              `mesa-item-insert-fallback-${mesaId}-${addedCount}`,
+              `${addedCount} ${itemsLabel} ${addedCount === 1 ? "foi adicionado" : "foram adicionados"} na mesa ${mesaLabel}.`,
+              { mesaId },
+            );
+          }
+
+          if (removedCount > 0 && !isLikelyLocalMesaChange(mesaId)) {
+            const mesaLabel = getMesaLabelById(mesaId);
+            const itemsLabel = removedCount === 1 ? "item" : "itens";
+
+            notifyRealtimeChange(
+              `mesa-item-delete-fallback-${mesaId}-${removedCount}`,
+              `${removedCount} ${itemsLabel} ${removedCount === 1 ? "foi removido" : "foram removidos"} da mesa ${mesaLabel}.`,
+              { mesaId },
+            );
+          }
+
+          if (editedCount > 0 && !isLikelyLocalMesaChange(mesaId)) {
+            const mesaLabel = getMesaLabelById(mesaId);
+            const itemsLabel = editedCount === 1 ? "item" : "itens";
+
+            notifyRealtimeChange(
+              `mesa-item-update-fallback-${mesaId}-${editedCount}`,
+              `${editedCount} ${itemsLabel} ${editedCount === 1 ? "teve quantidade/preco alterado" : "tiveram quantidade/preco alterados"} na mesa ${mesaLabel}.`,
+              { mesaId },
+            );
+          }
+
+          if (
+            signatureForList(previousItems) !== signatureForList(nextMesaItems)
+          ) {
+            changedMesaIds.add(mesaId);
+          }
+        });
+
+        setMesaItemsByMesaId(groupedItems);
+
+        changedMesaIds.forEach((mesaId) => {
+          markMesaAsExternallyChanged(mesaId);
+        });
+      } catch (error) {
+        console.error(
+          `${realtimeLogPrefix} items fallback refresh failed`,
+          error,
+        );
+      } finally {
+        isRefreshingItemsFallback = false;
+      }
+    };
+
+    const scheduleMesasFallbackRefresh = (reason: string) => {
+      console.warn(`${realtimeLogPrefix} scheduling mesas fallback`, {
+        reason,
+      });
+
+      if (mesasFallbackTimeout !== null) {
+        window.clearTimeout(mesasFallbackTimeout);
+      }
+
+      mesasFallbackTimeout = window.setTimeout(() => {
+        mesasFallbackTimeout = null;
+        void refreshMesasFromFallback();
+      }, 120);
+    };
+
+    const scheduleItemsFallbackRefresh = (reason: string) => {
+      console.warn(`${realtimeLogPrefix} scheduling items fallback`, {
+        reason,
+      });
+
+      if (itemsFallbackTimeout !== null) {
+        window.clearTimeout(itemsFallbackTimeout);
+      }
+
+      itemsFallbackTimeout = window.setTimeout(() => {
+        itemsFallbackTimeout = null;
+        void refreshItemsFromFallback();
+      }, 120);
+    };
+
+    const safeOldTableItemRow = (
+      rawOld: RealtimePostgresChangesPayload<RestaurantTableItemRealtimeRow>["old"],
+    ): Partial<RestaurantTableItemRealtimeRow> => {
+      if (!rawOld || typeof rawOld !== "object") {
+        return {};
+      }
+
+      return rawOld as Partial<RestaurantTableItemRealtimeRow>;
+    };
+
+    const loadInitialItemsSnapshot = async () => {
+      try {
+        const nextItems = await fetchMesaItemsSnapshot();
+
+        if (!isMounted) {
+          return;
+        }
+
+        const groupedItems = nextItems.reduce<Record<string, MesaItem[]>>(
+          (accumulator, item) => {
+            if (!item.mesaId) {
+              return accumulator;
+            }
+
+            if (!accumulator[item.mesaId]) {
+              accumulator[item.mesaId] = [];
+            }
+
+            accumulator[item.mesaId].push(item);
+            return accumulator;
+          },
+          {},
+        );
+
+        setMesaItemsByMesaId(groupedItems);
+      } catch {
+        console.error(`${realtimeLogPrefix} initial items snapshot failed`);
+        return;
+      }
+    };
+
+    const handleRestaurantTablesChange = (
+      payload: RealtimePostgresChangesPayload<RestaurantTableRealtimeRow>,
+    ) => {
+      try {
+        console.debug(`${realtimeLogPrefix} restaurant_tables event`, {
+          eventType: payload.eventType,
+          old: payload.old,
+          new: payload.new,
+        });
+        if (!isMounted) {
+          return;
+        }
+
+        if (payload.eventType === "DELETE") {
+          const oldRow = payload.old as Partial<RestaurantTableRealtimeRow>;
+          const deletedId = oldRow.id;
+
+          if (oldRow.tenant_id && oldRow.tenant_id !== tenantId) {
+            return;
+          }
+
+          if (!deletedId) {
+            scheduleMesasFallbackRefresh(
+              "restaurant_tables delete payload without id",
+            );
+            return;
+          }
+
+          if (!isLikelyLocalMesaChange(deletedId)) {
+            const mesaLabel = oldRow.name
+              ? oldRow.code
+                ? `${oldRow.code} (${oldRow.name})`
+                : oldRow.name
+              : getMesaLabelById(deletedId);
+
+            notifyRealtimeChange(
+              `mesa-delete-${deletedId}`,
+              `Mesa ${mesaLabel} foi deletada.`,
+              { mesaId: deletedId, allowNavigateToMesa: false },
+            );
+          }
+
+          setMesas((previousMesas) =>
+            previousMesas.filter((mesa) => mesa.id !== deletedId),
+          );
+          setMesaForDetail((previousMesa) =>
+            previousMesa?.id === deletedId ? null : previousMesa,
+          );
+          setMesaForEdit((previousMesa) =>
+            previousMesa?.id === deletedId ? null : previousMesa,
+          );
+          setMenuMesaId((previousMesaId) =>
+            previousMesaId === deletedId ? null : previousMesaId,
+          );
+          clearMesaExternalChange(deletedId);
+
+          return;
+        }
+
+        const row = payload.new;
+
+        if (!row?.id) {
+          scheduleMesasFallbackRefresh(
+            "restaurant_tables payload without row id",
+          );
+          return;
+        }
+
+        if (row.tenant_id && row.tenant_id !== tenantId) {
+          return;
+        }
+
+        if (
+          payload.eventType === "INSERT" &&
+          !isLikelyLocalMesaChange(row.id)
+        ) {
+          const mesaLabel = row.code ? `${row.code} (${row.name})` : row.name;
+
+          notifyRealtimeChange(
+            `mesa-insert-${row.id}`,
+            `Mesa ${mesaLabel} foi criada.`,
+            { mesaId: row.id },
+          );
+          markMesaAsExternallyChanged(row.id);
+        }
+
+        if (!row.active) {
+          setMesas((previousMesas) =>
+            previousMesas.filter((mesa) => mesa.id !== row.id),
+          );
+          setMesaForDetail((previousMesa) =>
+            previousMesa?.id === row.id ? null : previousMesa,
+          );
+          setMesaForEdit((previousMesa) =>
+            previousMesa?.id === row.id ? null : previousMesa,
+          );
+          clearMesaExternalChange(row.id);
+          return;
+        }
+
+        const nextMesa = mapRealtimeTableToMesa(row);
+
+        if (payload.eventType === "UPDATE") {
+          const previousMesa = mesasRef.current.find(
+            (mesa) => mesa.id === nextMesa.id,
+          );
+
+          if (
+            previousMesa &&
+            previousMesa.status !== nextMesa.status &&
+            !isLikelyLocalMesaChange(nextMesa.id)
+          ) {
+            notifyRealtimeChange(
+              `mesa-status-${nextMesa.id}-${nextMesa.status}`,
+              `Status da mesa ${nextMesa.code} (${nextMesa.name}) mudou para ${statusStyles[nextMesa.status].label}.`,
+              { mesaId: nextMesa.id },
+            );
+          }
+
+          markMesaAsExternallyChanged(nextMesa.id);
+        }
+
+        setMesas((previousMesas) => {
+          const existingIndex = previousMesas.findIndex(
+            (mesa) => mesa.id === nextMesa.id,
+          );
+
+          if (existingIndex === -1) {
+            return [...previousMesas, nextMesa].sort((a, b) => a.code - b.code);
+          }
+
+          const nextMesas = [...previousMesas];
+          nextMesas[existingIndex] = nextMesa;
+          return nextMesas.sort((a, b) => a.code - b.code);
+        });
+
+        setMesaForDetail((previousMesa) =>
+          previousMesa?.id === nextMesa.id ? nextMesa : previousMesa,
+        );
+        setMesaForEdit((previousMesa) =>
+          previousMesa?.id === nextMesa.id ? nextMesa : previousMesa,
+        );
+      } catch (error) {
+        console.error(
+          `${realtimeLogPrefix} restaurant_tables handler error`,
+          error,
+        );
+        return;
+      }
+    };
+
+    const handleRestaurantTableItemsChange = (
+      payload: RealtimePostgresChangesPayload<RestaurantTableItemRealtimeRow>,
+    ) => {
+      try {
+        console.debug(`${realtimeLogPrefix} restaurant_table_items event`, {
+          eventType: payload.eventType,
+          old: payload.old,
+          new: payload.new,
+        });
+        if (!isMounted) {
+          return;
+        }
+
+        if (payload.eventType === "DELETE") {
+          const oldRow = safeOldTableItemRow(payload.old);
+          const deletedItemId = oldRow.id;
+          const oldMesaId = oldRow.table_id;
+
+          if (oldRow.tenant_id && oldRow.tenant_id !== tenantId) {
+            return;
+          }
+
+          if (!deletedItemId) {
+            scheduleItemsFallbackRefresh(
+              "restaurant_table_items delete payload without item id",
+            );
+            return;
+          }
+
+          const impactedMesaIds = oldMesaId
+            ? [oldMesaId]
+            : Object.entries(mesaItemsByMesaIdRef.current)
+                .filter(([, items]) =>
+                  items.some((item) => item.id === deletedItemId),
+                )
+                .map(([mesaId]) => mesaId);
+
+          impactedMesaIds.forEach((mesaId) => {
+            markMesaAsExternallyChanged(mesaId);
+          });
+
+          setMesaItemsByMesaId((previousMap) => {
+            if (!oldMesaId) {
+              const nextMap: Record<string, MesaItem[]> = {};
+              let changed = false;
+
+              Object.entries(previousMap).forEach(([mesaId, items]) => {
+                const filtered = items.filter(
+                  (item) => item.id !== deletedItemId,
+                );
+
+                if (filtered.length !== items.length) {
+                  changed = true;
+                }
+
+                nextMap[mesaId] = filtered;
+              });
+
+              return changed ? nextMap : previousMap;
+            }
+
+            const previousItems = previousMap[oldMesaId] ?? [];
+            const nextItems = previousItems.filter(
+              (item) => item.id !== deletedItemId,
+            );
+
+            if (nextItems.length === previousItems.length) {
+              return previousMap;
+            }
+
+            return {
+              ...previousMap,
+              [oldMesaId]: nextItems,
+            };
+          });
+
+          return;
+        }
+
+        const row = payload.new;
+
+        if (!row?.id || !row.table_id) {
+          scheduleItemsFallbackRefresh(
+            "restaurant_table_items payload without row id/table_id",
+          );
+          return;
+        }
+
+        if (row.tenant_id && row.tenant_id !== tenantId) {
+          return;
+        }
+
+        const nextItem = mapRealtimeTableItemToMesaItem(row);
+        const oldRow = safeOldTableItemRow(payload.old);
+        const previousMesaId = oldRow.table_id;
+
+        if (
+          payload.eventType === "INSERT" &&
+          !isLikelyLocalMesaChange(row.table_id)
+        ) {
+          notifyRealtimeChange(
+            `mesa-item-insert-${row.id}`,
+            `Item ${nextItem.name} foi adicionado na mesa ${getMesaLabelById(row.table_id)}.`,
+            { mesaId: row.table_id },
+          );
+        }
+
+        markMesaAsExternallyChanged(row.table_id);
+
+        if (previousMesaId && previousMesaId !== row.table_id) {
+          markMesaAsExternallyChanged(previousMesaId);
+        }
+
+        setMesaItemsByMesaId((previousMap) => {
+          const nextMap = { ...previousMap };
+
+          if (!previousMesaId) {
+            Object.keys(nextMap).forEach((mesaId) => {
+              nextMap[mesaId] = nextMap[mesaId].filter(
+                (item) => item.id !== nextItem.id,
+              );
+            });
+          }
+
+          if (
+            payload.eventType === "UPDATE" &&
+            previousMesaId &&
+            previousMesaId !== row.table_id
+          ) {
+            const previousMesaItems = nextMap[previousMesaId] ?? [];
+            nextMap[previousMesaId] = previousMesaItems.filter(
+              (item) => item.id !== nextItem.id,
+            );
+          }
+
+          const currentMesaItems = nextMap[row.table_id] ?? [];
+          const itemIndex = currentMesaItems.findIndex(
+            (item) => item.id === nextItem.id,
+          );
+
+          if (itemIndex === -1) {
+            nextMap[row.table_id] = [...currentMesaItems, nextItem];
+            return nextMap;
+          }
+
+          const updatedMesaItems = [...currentMesaItems];
+          updatedMesaItems[itemIndex] = nextItem;
+          nextMap[row.table_id] = updatedMesaItems;
+          return nextMap;
+        });
+      } catch (error) {
+        console.error(
+          `${realtimeLogPrefix} restaurant_table_items handler error`,
+          error,
+        );
+        return;
+      }
+    };
+
+    const supabase = getSupabaseBrowserClient();
+    console.info(`${realtimeLogPrefix} creating channel`, {
+      tenantId,
+    });
+    const channel = supabase
+      .channel(`mesas-board-realtime-${crypto.randomUUID()}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "restaurant_tables",
+        },
+        handleRestaurantTablesChange,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "restaurant_table_items",
+        },
+        handleRestaurantTableItemsChange,
+      )
+      .subscribe((status) => {
+        if (!isMounted) {
+          return;
+        }
+
+        console.info(`${realtimeLogPrefix} channel status`, {
+          status,
+          tenantId,
+        });
+
+        if (status === "CHANNEL_ERROR") {
+          toast.error("Tempo real das mesas desconectado.");
+        }
+      });
+
+    void loadInitialItemsSnapshot();
+
+    return () => {
+      isMounted = false;
+      console.info(`${realtimeLogPrefix} removing channel`, {
+        tenantId,
+      });
+
+      if (mesasFallbackTimeout !== null) {
+        window.clearTimeout(mesasFallbackTimeout);
+      }
+
+      if (itemsFallbackTimeout !== null) {
+        window.clearTimeout(itemsFallbackTimeout);
+      }
+
+      void supabase.removeChannel(channel);
+    };
+  }, [tenantId]);
+
+  useEffect(() => {
+    let isMounted = true;
 
     const loadCatalogItemAdditionals = async () => {
       setIsLoadingCatalogItemAdditionals(true);
@@ -1695,11 +2770,17 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     setMenuMesaId(null);
     setIsPaymentModalOpen(false);
     setMesaForDetail(mesa);
-    setMesaItemsByMesaId((prev) => ({
-      ...prev,
-      [mesa.id]: [],
-    }));
-    void loadMesaItemsMutation.mutateAsync(mesa.id);
+    clearMesaExternalChange(mesa.id);
+
+    if (mesaItemsByMesaId[mesa.id] !== undefined) {
+      void refreshMesaItemsSilently(mesa.id);
+      return;
+    }
+
+    startMesaItemsSync(mesa.id);
+    void loadMesaItemsMutation.mutateAsync(mesa.id).finally(() => {
+      finishMesaItemsSync(mesa.id);
+    });
   };
 
   const handleOpenEditMesa = (mesa: Mesa) => {
@@ -1794,9 +2875,17 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     );
   };
 
+  const requestDisableOptionalConfig = (
+    type: "couvert" | "service-charge",
+    scope: "global" | "mesa",
+    mesa?: Mesa,
+  ) => {
+    setPendingDisableConfig({ type, scope, mesa });
+  };
+
   const handleToggleGlobalCouvert = (nextEnabled: boolean) => {
     if (!nextEnabled) {
-      setIsDailyCouvertEnabled(false);
+      requestDisableOptionalConfig("couvert", "global");
       return;
     }
 
@@ -1807,13 +2896,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     const currentConfig = getMesaCouvertConfig(mesa.id);
 
     if (currentConfig.enabled) {
-      setMesaCouvertOverrides((prev) => ({
-        ...prev,
-        [mesa.id]: {
-          enabled: false,
-          value: currentConfig.value,
-        },
-      }));
+      requestDisableOptionalConfig("couvert", "mesa", mesa);
       setMenuMesaId(null);
       return;
     }
@@ -1846,7 +2929,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
 
   const handleToggleGlobalServiceCharge = (nextEnabled: boolean) => {
     if (!nextEnabled) {
-      setIsDailyServiceChargeEnabled(false);
+      requestDisableOptionalConfig("service-charge", "global");
       return;
     }
 
@@ -1857,19 +2940,55 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
     const currentConfig = getMesaServiceChargeConfig(mesa.id);
 
     if (currentConfig.enabled) {
-      setMesaServiceChargeOverrides((prev) => ({
-        ...prev,
-        [mesa.id]: {
-          enabled: false,
-          value: currentConfig.value,
-        },
-      }));
+      requestDisableOptionalConfig("service-charge", "mesa", mesa);
       setMenuMesaId(null);
       return;
     }
 
     openServiceChargeModal("mesa", mesa);
     setMenuMesaId(null);
+  };
+
+  const handleConfirmDisableOptionalConfig = () => {
+    if (!pendingDisableConfig) {
+      return;
+    }
+
+    const { type, scope, mesa } = pendingDisableConfig;
+
+    if (type === "couvert") {
+      if (scope === "global") {
+        setIsDailyCouvertEnabled(false);
+      } else if (mesa) {
+        const currentConfig = getMesaCouvertConfig(mesa.id);
+
+        setMesaCouvertOverrides((prev) => ({
+          ...prev,
+          [mesa.id]: {
+            enabled: false,
+            value: currentConfig.value,
+          },
+        }));
+      }
+    }
+
+    if (type === "service-charge") {
+      if (scope === "global") {
+        setIsDailyServiceChargeEnabled(false);
+      } else if (mesa) {
+        const currentConfig = getMesaServiceChargeConfig(mesa.id);
+
+        setMesaServiceChargeOverrides((prev) => ({
+          ...prev,
+          [mesa.id]: {
+            enabled: false,
+            value: currentConfig.value,
+          },
+        }));
+      }
+    }
+
+    setPendingDisableConfig(null);
   };
 
   const handleConfirmCouvertModal = () => {
@@ -2441,36 +3560,46 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
       ) : null}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        {mesas.map((mesa) => (
-          <MesaCard
-            key={mesa.id}
-            mesa={mesa}
-            menuOpen={menuMesaId === mesa.id}
-            isBusy={isAnyMesaMutationPending}
-            isStatusUpdating={
-              statusPendingMesaId === mesa.id && updateMesaMutation.isPending
-            }
-            onOpen={handleOpenMesaDetail}
-            onToggleMenu={(mesaId) =>
-              setMenuMesaId((current) => (current === mesaId ? null : mesaId))
-            }
-            onOpenStatus={handleOpenMesaDetail}
-            onOpenEdit={handleOpenEditMesa}
-            couvertActionLabel={
-              getMesaCouvertConfig(mesa.id).enabled
-                ? "Desabilitar couvert artístico nesta mesa"
-                : "Habilitar couvert artístico nesta mesa"
-            }
-            onToggleCouvert={handleToggleMesaCouvert}
-            serviceChargeActionLabel={
-              getMesaServiceChargeConfig(mesa.id).enabled
-                ? "Desabilitar taxa de serviço nesta mesa"
-                : "Habilitar taxa de serviço nesta mesa"
-            }
-            onToggleServiceCharge={handleToggleMesaServiceCharge}
-            onDelete={handleDeleteMesa}
-          />
-        ))}
+        {mesas.map((mesa) => {
+          const itemResume = mesaItemsResumeByMesaId[mesa.id] ?? {
+            waiting: 0,
+            delivered: 0,
+          };
+
+          return (
+            <MesaCard
+              key={mesa.id}
+              mesa={mesa}
+              menuOpen={menuMesaId === mesa.id}
+              isBusy={isAnyMesaMutationPending}
+              isStatusUpdating={
+                statusPendingMesaId === mesa.id && updateMesaMutation.isPending
+              }
+              hasExternalChange={Boolean(mesaExternalChangeById[mesa.id])}
+              waitingItemsCount={itemResume.waiting}
+              deliveredItemsCount={itemResume.delivered}
+              onOpen={handleOpenMesaDetail}
+              onToggleMenu={(mesaId) =>
+                setMenuMesaId((current) => (current === mesaId ? null : mesaId))
+              }
+              onOpenStatus={handleOpenMesaDetail}
+              onOpenEdit={handleOpenEditMesa}
+              couvertActionLabel={
+                getMesaCouvertConfig(mesa.id).enabled
+                  ? "Desabilitar couvert artístico nesta mesa"
+                  : "Habilitar couvert artístico nesta mesa"
+              }
+              onToggleCouvert={handleToggleMesaCouvert}
+              serviceChargeActionLabel={
+                getMesaServiceChargeConfig(mesa.id).enabled
+                  ? "Desabilitar taxa de serviço nesta mesa"
+                  : "Habilitar taxa de serviço nesta mesa"
+              }
+              onToggleServiceCharge={handleToggleMesaServiceCharge}
+              onDelete={handleDeleteMesa}
+            />
+          );
+        })}
       </div>
 
       {openCreateModal ? (
@@ -2675,14 +3804,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
 
               return (
                 <>
-                  {isLoadingMesaItems ? (
-                    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center rounded-2xl bg-[var(--app-surface)]/30 backdrop-blur-[2px]">
-                      <Loader2 className="h-8 w-8 animate-spin text-[var(--app-primary)]" />
-                      Buscando itens
-                    </div>
-                  ) : null}
-
-                  <div className="sticky top-0 z-30 mb-2 -mx-4 flex items-center justify-between gap-3 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 px-4 pb-1.5 backdrop-blur-sm">
+                  <div className="sticky top-0 z-30 mb-2 -mx-4 flex items-center justify-between gap-3 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 px-4 py-1.5 backdrop-blur-sm">
                     <div className="min-w-0">
                       <p className="text-[11px] font-medium leading-none text-[var(--app-muted)]">
                         Mesa {mesaForDetail.code}
@@ -2700,14 +3822,22 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                       className="shrink-0 rounded-full p-1 text-[var(--app-muted)] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
                       aria-label="Fechar modal"
                     >
-                      <X className="h-6 w-6 " />
+                      <X className="h-6 w-6" />
                     </button>
                   </div>
 
                   <div className="mb-3">
-                    <h2 className="text-2xl font-semibold leading-tight text-[var(--app-text)]">
-                      {mesaForDetail.name}
-                    </h2>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <h2 className="text-2xl font-semibold leading-tight text-[var(--app-text)]">
+                        {mesaForDetail.name}
+                      </h2>
+                      {isMesaDetailSyncing ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-muted)]">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Sincronizando
+                        </span>
+                      ) : null}
+                    </div>
                     <p
                       className={`mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium ${detailStyle.statusChip}`}
                     >
@@ -3307,6 +4437,27 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
           </div>
         </AppModal>
       ) : null}
+
+      <ConfirmationModal
+        isOpen={Boolean(pendingDisableConfig)}
+        title={
+          pendingDisableConfig?.type === "couvert"
+            ? "Desativar couvert artístico"
+            : "Desativar taxa de serviço"
+        }
+        description={
+          pendingDisableConfig?.scope === "global"
+            ? `Tem certeza que deseja desativar ${pendingDisableConfig?.type === "couvert" ? "o couvert artístico" : "a taxa de serviço"} para o valor geral?`
+            : `Tem certeza que deseja desativar ${pendingDisableConfig?.type === "couvert" ? "o couvert artístico" : "a taxa de serviço"} para a mesa ${pendingDisableConfig?.mesa?.name ?? "selecionada"}?`
+        }
+        helperText="Você pode reativar depois sem perder o valor configurado."
+        confirmLabel="Desativar"
+        confirmTone="primary"
+        onClose={() => setPendingDisableConfig(null)}
+        onConfirm={() => {
+          handleConfirmDisableOptionalConfig();
+        }}
+      />
 
       <ConfirmationModal
         isOpen={Boolean(mesaPendingDelete)}
@@ -3973,6 +5124,15 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                   : "Criar item"}
               </button>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {isAnyMesaItemsSyncing ? (
+        <div className="pointer-events-none fixed bottom-20 left-3 z-30 md:bottom-4 md:left-4">
+          <div className="inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)]/95 px-2.5 py-1 text-[11px] font-medium text-[var(--app-muted)] shadow-sm backdrop-blur">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Sincronizando
           </div>
         </div>
       ) : null}

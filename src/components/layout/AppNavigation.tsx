@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { LogIn, Search, SquareKanban, UtensilsCrossed } from "lucide-react";
+import {
+  ClipboardList,
+  LogIn,
+  Search,
+  SquareKanban,
+  UtensilsCrossed,
+} from "lucide-react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 
@@ -45,6 +51,7 @@ export default function AppNavigation({
     "/": LogIn,
     "/login": LogIn,
     "/mesas": UtensilsCrossed,
+    "/auditoria": ClipboardList,
     "/cardapio": Search,
     "/items": Search,
     "/perfil": SquareKanban,

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, X } from "lucide-react";
 import { toast } from "react-toastify";
@@ -243,6 +244,16 @@ export default function ProfileDropdown({
               Adicionar funcionario
             </button>
           ) : null}
+
+          {(userRole === "DONO" || userRole === "ATENDENTE") && (
+            <Link
+              href="/auditoria"
+              className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--app-muted)] transition hover:opacity-80"
+              onClick={() => setIsOpen(false)}
+            >
+              Auditoria
+            </Link>
+          )}
 
           <form action={signOutAction}>
             <button
