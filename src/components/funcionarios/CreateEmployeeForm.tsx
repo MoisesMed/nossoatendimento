@@ -19,7 +19,7 @@ type EmployeeFormErrors = {
 const roleLabels: Record<EmployeeRole, string> = {
   DONO: "Dono",
   ATENDENTE: "Atendente",
-  USUARIO: "Usuario",
+  USUARIO: "Usuário",
 };
 
 export default function CreateEmployeeForm() {
@@ -67,7 +67,7 @@ export default function CreateEmployeeForm() {
     if (normalizedPhone.length < 10) {
       nextErrors.phone = "Informe um telefone valido com DDD";
     } else if (normalizedPhone.length > 15) {
-      nextErrors.phone = "Numero muito longo";
+      nextErrors.phone = "Número muito longo";
     }
 
     if (password.length < 6) {
@@ -77,7 +77,7 @@ export default function CreateEmployeeForm() {
     if (confirmPassword.length < 6) {
       nextErrors.confirmPassword = "Confirme a senha";
     } else if (password !== confirmPassword) {
-      nextErrors.confirmPassword = "As senhas nao conferem";
+      nextErrors.confirmPassword = "As senhas não conferem";
     }
 
     setErrors(nextErrors);
@@ -117,10 +117,10 @@ export default function CreateEmployeeForm() {
       };
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Falha ao criar funcionario");
+        throw new Error(payload.error ?? "Falha ao criar funcionário");
       }
 
-      toast.success("Funcionario criado com sucesso.");
+      toast.success("Funcionário criado com sucesso.");
       setFullName("");
       setEmail("");
       setPhone("");
@@ -131,7 +131,7 @@ export default function CreateEmployeeForm() {
       router.refresh();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Falha ao criar funcionario";
+        error instanceof Error ? error.message : "Falha ao criar funcionário";
       toast.error(message);
     } finally {
       setIsSubmitting(false);
@@ -142,10 +142,10 @@ export default function CreateEmployeeForm() {
     <section className="w-full max-w-xl rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-sm sm:p-5">
       <div className="mb-4">
         <h1 className="text-lg font-semibold text-[var(--app-text)] sm:text-xl">
-          Adicionar funcionario
+          Adicionar funcionário
         </h1>
         <p className="mt-1 text-sm text-[var(--app-muted)]">
-          Informe email, senha e permissao para criar um novo acesso no
+          Informe email, senha e permissão para criar um novo acesso no
           restaurante.
         </p>
       </div>
@@ -188,7 +188,7 @@ export default function CreateEmployeeForm() {
               setEmail(event.target.value);
               clearFieldError("email");
             }}
-            placeholder="funcionario@restaurante.com"
+            placeholder="funcionário@restaurante.com"
             className={cn(
               "w-full rounded-md border bg-white px-3 py-2 text-sm text-[var(--app-text)] outline-none transition",
               errors.email
@@ -238,7 +238,7 @@ export default function CreateEmployeeForm() {
               setPassword(event.target.value);
               clearFieldError("password");
             }}
-            placeholder="Minimo 6 caracteres"
+            placeholder="Mínimo 6 caracteres"
             className={cn(
               "w-full rounded-md border bg-white px-3 py-2 text-sm text-[var(--app-text)] outline-none transition",
               errors.password
@@ -307,7 +307,7 @@ export default function CreateEmployeeForm() {
           ) : (
             <UserPlus className="h-4 w-4" />
           )}
-          {isSubmitting ? "Criando..." : "Criar funcionario"}
+          {isSubmitting ? "Criando..." : "Criar funcionário"}
         </button>
       </form>
     </section>

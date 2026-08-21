@@ -14,24 +14,24 @@ import { cn } from "@/lib/cn";
 const CURRENT_TENANT_SLUG = "labavetteresto";
 
 const loginSchema = z.object({
-  email: z.email("Informe um email valido"),
+  email: z.email("Informe um email válido"),
   password: z.string().min(6, "A senha precisa ter pelo menos 6 caracteres"),
 });
 
 const registerSchema = z
   .object({
     fullName: z.string().min(3, "Informe o nome completo"),
-    email: z.email("Informe um email valido"),
+    email: z.email("Informe um email válido"),
     phone: z
       .string()
-      .min(10, "Informe um telefone valido com DDD")
-      .max(15, "Numero muito longo"),
+      .min(10, "Informe um telefone válido com DDD")
+      .max(15, "Número muito longo"),
     password: z.string().min(6, "A senha precisa ter pelo menos 6 caracteres"),
     confirmPassword: z.string().min(6, "Confirme a senha"),
   })
   .refine((data) => data.password === data.confirmPassword, {
     path: ["confirmPassword"],
-    message: "As senhas nao conferem",
+    message: "As senhas não conferem",
   });
 
 type LoginInput = z.infer<typeof loginSchema>;
@@ -54,7 +54,7 @@ function resolveLoginErrorMessage(error: unknown) {
     normalizedCode === "invalid_credentials" ||
     normalizedMessage.includes("invalid login credentials")
   ) {
-    return "Email ou senha invalidos.";
+    return "Email ou senha inválidos.";
   }
 
   if (normalizedMessage.includes("email not confirmed")) {
@@ -95,7 +95,7 @@ export default function Page() {
 
       if (membershipsError) {
         setAccessWarning(
-          "Nao foi possivel validar seu acesso agora. Tente entrar novamente.",
+          "Não foi possível validar seu acesso agora. Tente entrar novamente.",
         );
         return;
       }
@@ -123,7 +123,7 @@ export default function Page() {
       }
 
       setAccessWarning(
-        "Seu usuario nao possui acesso ativo a nenhum restaurante.",
+        "Seu usuário não possui acesso ativo a nenhum restaurante.",
       );
     };
 
@@ -249,12 +249,12 @@ export default function Page() {
       const message = error instanceof Error ? error.message.toLowerCase() : "";
 
       if (message.includes("tenant_user_profiles_tenant_id_email_key")) {
-        toast.error("Este email ja esta em uso neste restaurante.");
+        toast.error("Este email já está em uso neste restaurante.");
         return;
       }
 
       if (message.includes("tenant_user_profiles_tenant_id_phone_key")) {
-        toast.error("Este telefone ja esta em uso neste restaurante.");
+        toast.error("Este telefone já está em uso neste restaurante.");
         return;
       }
 
@@ -274,8 +274,8 @@ export default function Page() {
         </div>
 
         <p className="mb-6 text-xs text-slate-500">
-          Cada usuario pertence ao tenant Lá Bavette Restô. No futuro, o tenant
-          sera resolvido por dominio.
+          Cada usuário pertence ao tenant Lá Bavette Restô. No futuro, o tenant
+          será resolvido por domínio.
         </p>
 
         {mode === "login" ? (
@@ -291,7 +291,7 @@ export default function Page() {
 
             {pendingConfirmationEmail ? (
               <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                Confirmacao pendente para {pendingConfirmationEmail}. Acesse seu
+                Confirmação pendente para {pendingConfirmationEmail}. Acesse seu
                 email e confirme a conta para continuar.
               </div>
             ) : null}
@@ -307,7 +307,7 @@ export default function Page() {
               <input
                 {...loginRegister("email")}
                 type="email"
-                placeholder="voce@restaurante.com"
+                placeholder="você@restaurante.com"
                 disabled={isLoginLoading}
                 className={cn(
                   "w-full rounded-xl border px-3 py-2 text-sm outline-none transition",
@@ -366,15 +366,14 @@ export default function Page() {
               }}
               className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Nao tenho conta, quero me registrar
+              Não tenho conta, quero me registrar
             </button>
           </form>
         ) : (
           <form
             className="space-y-4"
-            onSubmit={handleRegisterSubmit(
-              onRegisterSubmit,
-              () => setHasTriedRegisterSubmit(true),
+            onSubmit={handleRegisterSubmit(onRegisterSubmit, () =>
+              setHasTriedRegisterSubmit(true),
             )}
           >
             <button
@@ -398,8 +397,7 @@ export default function Page() {
                 onFocus={() => markRegisterFieldInteracted("fullName")}
                 className={cn(
                   "w-full rounded-xl border px-3 py-2 text-sm outline-none transition",
-                  registerErrors.fullName &&
-                    showRegisterFieldError("fullName")
+                  registerErrors.fullName && showRegisterFieldError("fullName")
                     ? "border-red-500"
                     : "border-gray-300 focus:border-emerald-600",
                 )}
@@ -416,7 +414,7 @@ export default function Page() {
               <input
                 {...registerRegister("email")}
                 type="email"
-                placeholder="voce@restaurante.com"
+                placeholder="você@restaurante.com"
                 disabled={isRegisterLoading}
                 onFocus={() => markRegisterFieldInteracted("email")}
                 className={cn(
@@ -464,8 +462,7 @@ export default function Page() {
                 onFocus={() => markRegisterFieldInteracted("password")}
                 className={cn(
                   "w-full rounded-xl border px-3 py-2 text-sm outline-none transition",
-                  registerErrors.password &&
-                    showRegisterFieldError("password")
+                  registerErrors.password && showRegisterFieldError("password")
                     ? "border-red-500"
                     : "border-gray-300 focus:border-emerald-600",
                 )}

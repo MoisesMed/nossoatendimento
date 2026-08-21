@@ -700,7 +700,7 @@ function MesaCard({
         {menuOpen ? (
           <div
             className={[
-              "absolute z-40 mt-1 w-48 max-w-[calc(100vw-1rem)] rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-lg",
+              "absolute z-40 mt-1 w-48 max-w-[calc(100vw-1rem)] rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-lg z-50",
               menuHorizontalAlign === "open-right" ? "left-0" : "right-0",
             ].join(" ")}
           >
@@ -1062,21 +1062,13 @@ export default function MesasBoard({
     }
 
     const previousBodyOverflow = document.body.style.overflow;
-    const previousBodyPaddingRight = document.body.style.paddingRight;
     const previousHtmlOverflow = document.documentElement.style.overflow;
-    const scrollbarCompensation =
-      window.innerWidth - document.documentElement.clientWidth;
 
     document.body.style.overflow = "hidden";
     document.documentElement.style.overflow = "hidden";
 
-    if (scrollbarCompensation > 0) {
-      document.body.style.paddingRight = `${scrollbarCompensation}px`;
-    }
-
     return () => {
       document.body.style.overflow = previousBodyOverflow;
-      document.body.style.paddingRight = previousBodyPaddingRight;
       document.documentElement.style.overflow = previousHtmlOverflow;
     };
   }, [isAnyModalOpen]);
@@ -3501,7 +3493,7 @@ export default function MesasBoard({
                 handleToggleGlobalCouvert(event.target.checked)
               }
             />
-            Habilitar couvert artístico
+            Habilitar couvert
           </label>
 
           <label className="inline-flex items-center gap-2 text-xs font-medium text-[var(--app-text)]">
@@ -3586,8 +3578,8 @@ export default function MesasBoard({
               onOpenEdit={handleOpenEditMesa}
               couvertActionLabel={
                 getMesaCouvertConfig(mesa.id).enabled
-                  ? "Desabilitar couvert artístico nesta mesa"
-                  : "Habilitar couvert artístico nesta mesa"
+                  ? "Desabilitar couvert nesta mesa"
+                  : "Habilitar couvert nesta mesa"
               }
               onToggleCouvert={handleToggleMesaCouvert}
               serviceChargeActionLabel={

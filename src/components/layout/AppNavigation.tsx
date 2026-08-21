@@ -61,7 +61,7 @@ export default function AppNavigation({
     return (
       <nav
         className={cn(
-          "grid items-center border-t border-[var(--app-border)] bg-[var(--app-surface)] px-2 pb-[max(env(safe-area-inset-bottom),0.35rem)] pt-2",
+          "grid items-center border-t border-[var(--app-border)] bg-[var(--app-surface)] px-2 pb-[max(env(safe-area-inset-bottom),0.2rem)] pt-1",
           className,
         )}
         style={{
@@ -78,13 +78,13 @@ export default function AppNavigation({
               key={link.href}
               href={link.href}
               className={cn(
-                "flex flex-col items-center justify-center gap-1 rounded-md py-1 text-[11px] leading-none transition",
+                "flex flex-col items-center justify-center gap-0.5 rounded-md py-0.5 text-[10px] leading-none transition",
                 isActive
                   ? "text-[var(--app-text)]"
                   : "text-[var(--app-muted)] hover:text-[var(--app-text)]",
               )}
             >
-              <Icon className="h-5 w-5" />
+              <Icon className="h-[18px] w-[18px]" />
               <span>{link.label}</span>
             </Link>
           );

@@ -140,7 +140,7 @@ export default function ProfileDropdown({
     if (normalizedPhone.length < 10) {
       nextErrors.phone = "Informe um telefone valido com DDD";
     } else if (normalizedPhone.length > 15) {
-      nextErrors.phone = "Numero muito longo";
+      nextErrors.phone = "Número muito longo";
     }
 
     if (employeePassword.length < 6) {
@@ -150,7 +150,7 @@ export default function ProfileDropdown({
     if (employeeConfirmPassword.length < 6) {
       nextErrors.confirmPassword = "Confirme a senha";
     } else if (employeePassword !== employeeConfirmPassword) {
-      nextErrors.confirmPassword = "As senhas nao conferem";
+      nextErrors.confirmPassword = "As senhas não conferem";
     }
 
     setEmployeeErrors(nextErrors);
@@ -192,15 +192,15 @@ export default function ProfileDropdown({
       };
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Falha ao criar funcionario");
+        throw new Error(payload.error ?? "Falha ao criar funcionário");
       }
 
-      toast.success("Funcionario criado com sucesso.");
+      toast.success("Funcionário criado com sucesso.");
       resetCreateEmployeeForm();
       setIsCreateEmployeeModalOpen(false);
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Falha ao criar funcionario";
+        error instanceof Error ? error.message : "Falha ao criar funcionário";
       toast.error(message);
     } finally {
       setIsSubmittingEmployee(false);
@@ -241,7 +241,7 @@ export default function ProfileDropdown({
               className="block w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--app-muted)] transition hover:opacity-80"
               onClick={handleOpenCreateEmployeeModal}
             >
-              Adicionar funcionario
+              Adicionar funcionário
             </button>
           ) : null}
 
@@ -275,7 +275,7 @@ export default function ProfileDropdown({
       >
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="text-xl font-semibold text-slate-900">
-            Adicionar funcionario
+            Adicionar funcionário
           </h2>
           <button
             type="button"
@@ -328,7 +328,7 @@ export default function ProfileDropdown({
                 setEmployeeEmail(event.target.value);
                 clearEmployeeFieldError("email");
               }}
-              placeholder="funcionario@restaurante.com"
+              placeholder="funcionário@restaurante.com"
               className={cn(
                 "w-full rounded-xl border px-3 py-2 text-sm text-slate-900 outline-none transition disabled:cursor-not-allowed disabled:opacity-60",
                 employeeErrors.email
@@ -374,7 +374,7 @@ export default function ProfileDropdown({
                 setEmployeePassword(event.target.value);
                 clearEmployeeFieldError("password");
               }}
-              placeholder="Minimo 6 caracteres"
+              placeholder="Mínimo 6 caracteres"
               className={cn(
                 "w-full rounded-xl border px-3 py-2 text-sm text-slate-900 outline-none transition disabled:cursor-not-allowed disabled:opacity-60",
                 employeeErrors.password
@@ -416,7 +416,7 @@ export default function ProfileDropdown({
 
           <label className="block space-y-1">
             <span className="text-sm font-medium text-slate-800">
-              Permissao
+              Permissão
             </span>
             <select
               value={employeeRole}
@@ -428,7 +428,7 @@ export default function ProfileDropdown({
             >
               <option value="DONO">Dono</option>
               <option value="ATENDENTE">Atendente</option>
-              <option value="USUARIO">Usuario</option>
+              <option value="USUARIO">Usuário</option>
             </select>
             {employeeRole === "DONO" ? (
               <p className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900">

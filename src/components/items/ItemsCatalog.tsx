@@ -279,6 +279,10 @@ export default function ItemsCatalog({
   const [openQrModal, setOpenQrModal] = useState(false);
   const [publicMenuUrl, setPublicMenuUrl] = useState("");
   const [previewItem, setPreviewItem] = useState<MenuItem | null>(null);
+  const [previewImageDetail, setPreviewImageDetail] = useState<{
+    src: string;
+    alt: string;
+  } | null>(null);
   const [openCreateAdditional, setOpenCreateAdditional] = useState(false);
   const [editingAdditionalId, setEditingAdditionalId] = useState<string | null>(
     null,
@@ -3269,15 +3273,15 @@ export default function ItemsCatalog({
               </div>
 
               {!canManageItems && categoryImage.imageUrl ? (
-                <div className="h-[120px] w-full overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] sm:h-[240px]">
+                <div className="h-[132px] w-full overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] sm:h-[264px]">
                   <Image
                     src={categoryImage.imageUrl}
                     alt={`Imagem da categoria ${category}`}
-                    width={1200}
-                    height={480}
-                    sizes="(max-width: 640px) 100vw, 1200px"
-                    quality={80}
-                    className="h-full w-full"
+                    width={1600}
+                    height={720}
+                    sizes="(max-width: 800px) 100vw, 800px"
+                    quality={88}
+                    className="h-full w-full object-cover object-center"
                   />
                 </div>
               ) : null}
@@ -3550,8 +3554,8 @@ export default function ItemsCatalog({
                               alt={`Imagem do item ${item.name}`}
                               fill
                               draggable={false}
-                              sizes="120px"
-                              quality={80}
+                              sizes="(max-width: 640px) 96px, 120px"
+                              quality={85}
                               className="object-cover"
                             />
                           </div>
@@ -4425,8 +4429,11 @@ export default function ItemsCatalog({
 
       <AppModal
         isOpen={Boolean(previewItem) && !canManageItems}
-        onClose={() => setPreviewItem(null)}
-        panelClassName="max-h-[calc(100dvh-7rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[82dvh] sm:max-w-lg sm:p-5"
+        onClose={() => {
+          setPreviewItem(null);
+          setPreviewImageDetail(null);
+        }}
+        panelClassName="max-h-[calc(100dvh-7rem)] w-full overflow-y-auto rounded-md border border-[var(--app-border)] bg-white p-4 shadow-2xl sm:max-h-[82dvh] sm:max-w-xl sm:p-5"
       >
         {previewItem ? (
           <>
@@ -4450,16 +4457,32 @@ export default function ItemsCatalog({
               </button>
             </div>
 
-            <div className="relative mb-3 h-44 w-full overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] sm:h-56">
+            <div className="relative mb-3 h-52 w-full overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] sm:h-64">
               {previewItem.imageUrl ? (
-                <Image
-                  src={previewItem.imageUrl}
-                  alt={`Imagem do item ${previewItem.name}`}
-                  fill
-                  draggable={false}
-                  sizes="(max-width: 640px) 100vw, 640px"
-                  quality={85}
-                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPreviewImageDetail({
+                      src: previewItem.imageUrl as string,
+                      alt: `Imagem do item ${previewItem.name}`,
+                    })
+                  }
+                  className="relative h-full w-full"
+                  aria-label={`Ampliar imagem de ${previewItem.name}`}
+                >
+                  <Image
+                    src={previewItem.imageUrl}
+                    alt={`Imagem do item ${previewItem.name}`}
+                    fill
+                    draggable={false}
+                    sizes="(max-width: 800px) 100vw, 800px"
+                    quality={90}
+                    className="object-cover object-center"
+                  />
+                  <span className="absolute bottom-2 right-2 rounded-full border border-white/30 bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white">
+                    Toque para ampliar
+                  </span>
+                </button>
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-sm text-[var(--app-muted)]">
                   Sem imagem
@@ -4549,6 +4572,37 @@ export default function ItemsCatalog({
               )}
             </div>
           </>
+        ) : null}
+      </AppModal>
+
+      <AppModal
+        isOpen={Boolean(previewImageDetail) && !canManageItems}
+        onClose={() => setPreviewImageDetail(null)}
+        panelClassName="w-full overflow-hidden rounded-md border border-[var(--app-border)] bg-black p-2 shadow-2xl sm:max-w-4xl"
+      >
+        {previewImageDetail ? (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setPreviewImageDetail(null)}
+              className="absolute right-1 top-1 z-10 rounded-full border border-white/20 bg-black/55 p-1 text-white hover:opacity-85"
+              aria-label="Fechar imagem ampliada"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="relative h-[72dvh] w-full overflow-hidden rounded-sm bg-black">
+              <Image
+                src={previewImageDetail.src}
+                alt={previewImageDetail.alt}
+                fill
+                draggable={false}
+                sizes="(max-width: 1200px) 100vw, 1200px"
+                quality={90}
+                className="object-contain object-center"
+              />
+            </div>
+          </div>
         ) : null}
       </AppModal>
 

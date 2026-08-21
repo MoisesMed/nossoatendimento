@@ -41,7 +41,7 @@ export default function Providers({ children }: ProvidersProps) {
           maxWidth: "min(92vw, 360px)",
           right: 12,
           left: "auto",
-          bottom: 12,
+          bottom: "var(--app-toast-bottom, 12px)",
           padding: 0,
         }}
         toastStyle={{

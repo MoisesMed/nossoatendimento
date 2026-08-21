@@ -3,6 +3,13 @@
 :root {
   --background: #ffffff;
   --foreground: #111827;
+  --app-toast-bottom: 12px;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --app-toast-bottom: 82px;
+  }
 }
 
 body {
