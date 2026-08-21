@@ -34,7 +34,7 @@ export default async function MesasPage() {
     <div className="mx-auto flex min-h-screen w-full max-w-[1280px] flex-col pb-28">
       <section className="w-full px-4 pt-4 sm:px-6">
         <MesasBoardProviders>
-          <MesasBoard initialMesas={mesas} />
+          <MesasBoard initialMesas={mesas} tenantId={tenant.id} />
         </MesasBoardProviders>
       </section>
     </div>

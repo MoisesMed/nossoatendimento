@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { LogIn, Search, SquareKanban, UtensilsCrossed } from "lucide-react";
+import {
+  ClipboardList,
+  LogIn,
+  Search,
+  SquareKanban,
+  UtensilsCrossed,
+} from "lucide-react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 
@@ -19,10 +25,12 @@ const linksByRole = {
   USUARIO: [{ href: "/cardapio", label: "Cardapio" }],
   ATENDENTE: [
     { href: "/mesas", label: "Mesas" },
+    { href: "/auditoria", label: "Auditoria" },
     { href: "/cardapio", label: "Cardapio" },
   ],
   DONO: [
     { href: "/mesas", label: "Mesas" },
+    { href: "/auditoria", label: "Auditoria" },
     { href: "/cardapio", label: "Cardápio" },
   ],
 } as const;
@@ -45,6 +53,7 @@ export default function AppNavigation({
     "/": LogIn,
     "/login": LogIn,
     "/mesas": UtensilsCrossed,
+    "/auditoria": ClipboardList,
     "/cardapio": Search,
     "/items": Search,
     "/perfil": SquareKanban,
