@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
 	images: {
 		formats: ['image/avif', 'image/webp'],
 		qualities: [55, 60, 75, 80, 85, 90],
+		minimumCacheTTL: 60 * 60 * 24 * 30,
 		domains: supabaseHostname ? [supabaseHostname] : [],
 		remotePatterns: supabaseHostname
 			? [

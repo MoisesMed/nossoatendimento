@@ -53,6 +53,7 @@ type CreateMesaInput = {
 type MesaItem = {
   id: string;
   mesaId?: string;
+  code?: number;
   name: string;
   quantity: number;
   price: number;
@@ -79,6 +80,7 @@ type RestaurantTableItemRealtimeRow = {
   id: string;
   tenant_id?: string;
   table_id: string;
+  code: number | null;
   name: string;
   quantity: number;
   price: number;
@@ -355,6 +357,7 @@ function mapRealtimeTableItemToMesaItem(
   return {
     id: row.id,
     mesaId: row.table_id,
+    code: row.code ?? undefined,
     name: row.name,
     quantity: row.quantity,
     price: row.price,
@@ -830,6 +833,7 @@ export default function MesasBoard({
   const [openCloseComandaConfirm, setOpenCloseComandaConfirm] = useState(false);
   const [closeComandaObservation, setCloseComandaObservation] = useState("");
   const [isClosingComanda, setIsClosingComanda] = useState(false);
+  const [deleteMesaAfterClose, setDeleteMesaAfterClose] = useState(false);
   const [mesaForDetail, setMesaForDetail] = useState<Mesa | null>(null);
   const [mesaForEdit, setMesaForEdit] = useState<Mesa | null>(null);
   const [mesaPendingDelete, setMesaPendingDelete] = useState<Mesa | null>(null);
@@ -1339,6 +1343,80 @@ export default function MesasBoard({
     }
   };
 
+  const resolveNextMesaStatusFromItems = (
+    currentStatus: MesaStatus,
+    nextItems: MesaItem[],
+  ) => {
+    const hasWaitingItems = nextItems.some((item) => !item.delivered);
+
+    if (hasWaitingItems && currentStatus !== "EM_PREPARO") {
+      return "EM_PREPARO" as const;
+    }
+
+    if (
+      !hasWaitingItems &&
+      nextItems.length > 0 &&
+      currentStatus === "EM_PREPARO"
+    ) {
+      return "OCUPADA" as const;
+    }
+
+    return null;
+  };
+
+  const syncMesaStatusByItemsSilently = async (
+    mesaId: string,
+    nextItems: MesaItem[],
+  ) => {
+    const currentMesa = mesasRef.current.find((mesa) => mesa.id === mesaId);
+
+    if (!currentMesa) {
+      return;
+    }
+
+    const nextStatus = resolveNextMesaStatusFromItems(
+      currentMesa.status,
+      nextItems,
+    );
+
+    if (!nextStatus) {
+      return;
+    }
+
+    markLocalMesaChange(mesaId);
+
+    try {
+      const response = await fetch(`/api/mesas/${mesaId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+
+      const result = (await response.json().catch(() => ({}))) as {
+        data?: Mesa;
+      };
+
+      if (!response.ok || !result.data) {
+        return;
+      }
+
+      const updatedMesa = result.data;
+
+      setMesas((prev) =>
+        prev
+          .map((mesa) => (mesa.id === updatedMesa.id ? updatedMesa : mesa))
+          .sort((a, b) => a.code - b.code),
+      );
+      setMesaForDetail((prev) =>
+        prev && prev.id === updatedMesa.id ? updatedMesa : prev,
+      );
+    } catch {
+      return;
+    }
+  };
+
   const createMesaItemMutation = useMutation({
     onMutate: ({ mesaId }) => {
       markLocalMesaChange(mesaId);
@@ -1369,10 +1447,18 @@ export default function MesasBoard({
       return result.data;
     },
     onSuccess: (createdItem, variables) => {
-      setMesaItemsByMesaId((prev) => ({
-        ...prev,
-        [variables.mesaId]: [...(prev[variables.mesaId] ?? []), createdItem],
-      }));
+      let nextItemsForMesa: MesaItem[] = [];
+
+      setMesaItemsByMesaId((prev) => {
+        nextItemsForMesa = [...(prev[variables.mesaId] ?? []), createdItem];
+
+        return {
+          ...prev,
+          [variables.mesaId]: nextItemsForMesa,
+        };
+      });
+
+      void syncMesaStatusByItemsSilently(variables.mesaId, nextItemsForMesa);
     },
   });
 
@@ -1408,12 +1494,20 @@ export default function MesasBoard({
       return result.data;
     },
     onSuccess: (updatedItem, variables) => {
-      setMesaItemsByMesaId((prev) => ({
-        ...prev,
-        [variables.mesaId]: (prev[variables.mesaId] ?? []).map((item) =>
+      let nextItemsForMesa: MesaItem[] = [];
+
+      setMesaItemsByMesaId((prev) => {
+        nextItemsForMesa = (prev[variables.mesaId] ?? []).map((item) =>
           item.id === updatedItem.id ? updatedItem : item,
-        ),
-      }));
+        );
+
+        return {
+          ...prev,
+          [variables.mesaId]: nextItemsForMesa,
+        };
+      });
+
+      void syncMesaStatusByItemsSilently(variables.mesaId, nextItemsForMesa);
     },
   });
 
@@ -1440,12 +1534,21 @@ export default function MesasBoard({
       }
     },
     onSuccess: (_, variables) => {
-      setMesaItemsByMesaId((prev) => ({
-        ...prev,
-        [variables.mesaId]: (prev[variables.mesaId] ?? []).filter(
+      let nextItemsForMesa: MesaItem[] = [];
+
+      setMesaItemsByMesaId((prev) => {
+        nextItemsForMesa = (prev[variables.mesaId] ?? []).filter(
           (item) => item.id !== variables.itemId,
-        ),
-      }));
+        );
+
+        return {
+          ...prev,
+          [variables.mesaId]: nextItemsForMesa,
+        };
+      });
+
+      void syncMesaStatusByItemsSilently(variables.mesaId, nextItemsForMesa);
+
       setMesaItemPendingDelete((prev) =>
         prev?.id === variables.itemId ? null : prev,
       );
@@ -3150,6 +3253,7 @@ export default function MesasBoard({
       : null;
 
     const nextItemPayload: Omit<MesaItem, "id"> = {
+      code: selectedItem.code,
       name: selectedItem.name,
       quantity,
       price: lineAppliedPrice,
@@ -3320,6 +3424,7 @@ export default function MesasBoard({
       return;
     }
 
+    setDeleteMesaAfterClose(false);
     setPaymentDraft({ method: "CREDITO", amount: "" });
     setIsPaymentModalOpen(true);
   };
@@ -3338,6 +3443,7 @@ export default function MesasBoard({
       }
     }
 
+    setDeleteMesaAfterClose(false);
     setPaymentDraft({ method: "CREDITO", amount: "" });
     setIsPaymentModalOpen(true);
   };
@@ -3392,7 +3498,10 @@ export default function MesasBoard({
     });
   };
 
-  const finalizeMesaClosure = async (observation: string | null) => {
+  const finalizeMesaClosure = async (
+    observation: string | null,
+    options?: { deleteMesaAfterClose?: boolean },
+  ) => {
     if (!mesaForDetail) {
       return;
     }
@@ -3448,7 +3557,13 @@ export default function MesasBoard({
       setOpenCloseComandaConfirm(false);
       setCloseComandaObservation("");
       setIsPaymentModalOpen(false);
-      toast.success("Comanda encerrada e mesa liberada.");
+
+      if (options?.deleteMesaAfterClose) {
+        await deleteMesaMutation.mutateAsync(mesaId);
+        setDeleteMesaAfterClose(false);
+      } else {
+        toast.success("Comanda encerrada e mesa liberada.");
+      }
     } catch {
       toast.error("Não foi possível encerrar a comanda.");
     } finally {
@@ -3467,7 +3582,9 @@ export default function MesasBoard({
       return;
     }
 
-    void finalizeMesaClosure(null);
+    void finalizeMesaClosure(null, {
+      deleteMesaAfterClose,
+    });
   };
 
   const handleConfirmCloseComandaWithDebt = () => {
@@ -3478,7 +3595,9 @@ export default function MesasBoard({
       return;
     }
 
-    void finalizeMesaClosure(observation);
+    void finalizeMesaClosure(observation, {
+      deleteMesaAfterClose,
+    });
   };
 
   return (
@@ -4020,6 +4139,7 @@ export default function MesasBoard({
                           isServiceChargeEnabled={
                             currentMesaServiceCharge.enabled
                           }
+                          payments={currentMesaPayments}
                           disabled={isDetailStatusBusy}
                         />
 
@@ -4551,14 +4671,6 @@ export default function MesasBoard({
                 </ul>
               )}
 
-              {isDailyCouvertEnabled ? (
-                <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--app-border)] pt-2 text-xs text-[var(--app-text)]">
-                  <span>Couvert ({mesaForDetail.seats} pessoas)</span>
-                  <span className="font-semibold">
-                    {formatCurrency(mesaCouvertTotal)}
-                  </span>
-                </div>
-              ) : null}
               {currentMesaCouvert.enabled ? (
                 <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--app-border)] pt-2 text-xs text-[var(--app-text)]">
                   <span>
@@ -4567,6 +4679,16 @@ export default function MesasBoard({
                   </span>
                   <span className="font-semibold">
                     {formatCurrency(mesaCouvertTotal)}
+                  </span>
+                </div>
+              ) : null}
+              {currentMesaServiceCharge.enabled ? (
+                <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--app-border)] pt-2 text-xs text-[var(--app-text)]">
+                  <span>
+                    Taxa de serviço ({currentMesaServiceCharge.value}%)
+                  </span>
+                  <span className="font-semibold">
+                    {formatCurrency(mesaServiceChargeTotal)}
                   </span>
                 </div>
               ) : null}
@@ -4638,6 +4760,18 @@ export default function MesasBoard({
               {isClosingComanda ? "Encerrando..." : "Encerrar comanda"}
             </button>
 
+            <label className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-[var(--app-text)]">
+              <input
+                type="checkbox"
+                checked={deleteMesaAfterClose}
+                disabled={isClosingComanda}
+                onChange={(event) =>
+                  setDeleteMesaAfterClose(event.target.checked)
+                }
+              />
+              Excluir mesa após encerrar comanda
+            </label>
+
             <div className="mt-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-2">
               <p className="text-xs font-semibold text-[var(--app-text)]">
                 Lançamentos
@@ -4698,6 +4832,18 @@ export default function MesasBoard({
             <p className="text-sm text-[var(--app-muted)]">
               Restante pendente: {formatCurrency(remainingTotal)}
             </p>
+
+            <label className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-[var(--app-text)]">
+              <input
+                type="checkbox"
+                checked={deleteMesaAfterClose}
+                disabled={isClosingComanda}
+                onChange={(event) =>
+                  setDeleteMesaAfterClose(event.target.checked)
+                }
+              />
+              Excluir mesa após encerrar comanda
+            </label>
 
             <label className="mt-3 block space-y-1">
               <span className="text-sm font-medium text-[var(--app-text)]">

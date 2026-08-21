@@ -15,6 +15,7 @@ type RouteContext = {
 type TableItemRow = {
   id: string;
   table_id: string;
+  code: number | null;
   name: string;
   quantity: number;
   price: number;
@@ -27,6 +28,7 @@ type TableItemRow = {
 };
 
 const createTableItemSchema = z.object({
+  code: z.number().int().positive().nullable().optional(),
   name: z.string().trim().min(1).max(120),
   quantity: z.number().int().min(1).max(999),
   price: z.number().min(0).max(999999),
@@ -42,6 +44,7 @@ function toMesaItem(row: TableItemRow) {
   return {
     id: row.id,
     mesaId: row.table_id,
+    code: row.code ?? undefined,
     name: row.name,
     quantity: row.quantity,
     price: row.price,
@@ -132,6 +135,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     .insert({
       tenant_id: tenantId,
       table_id: mesaId,
+      code: parsed.data.code ?? null,
       name: parsed.data.name,
       quantity: parsed.data.quantity,
       price: parsed.data.price,
@@ -143,7 +147,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       additional_total: parsed.data.additionalTotal ?? null,
     })
     .select(
-      "id, table_id, name, quantity, price, original_price, delivered, pricing_type, weight_kg, additional_titles, additional_total",
+      "id, table_id, code, name, quantity, price, original_price, delivered, pricing_type, weight_kg, additional_titles, additional_total",
     )
     .single();
 
@@ -171,7 +175,7 @@ export async function GET(_: Request, { params }: RouteContext) {
   const { data, error } = await supabase
     .from("restaurant_table_items")
     .select(
-      "id, table_id, name, quantity, price, original_price, delivered, pricing_type, weight_kg, additional_titles, additional_total",
+      "id, table_id, code, name, quantity, price, original_price, delivered, pricing_type, weight_kg, additional_titles, additional_total",
     )
     .eq("tenant_id", tenantId)
     .eq("table_id", mesaId)

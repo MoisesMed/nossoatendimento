@@ -15,6 +15,19 @@ type MesaPrintItem = {
   additionalTotal?: number;
 };
 
+type MesaPrintPayment = {
+  id: string;
+  method: "CREDITO" | "DEBITO" | "PIX" | "DINHEIRO";
+  amount: number;
+};
+
+const paymentMethodLabels: Record<MesaPrintPayment["method"], string> = {
+  CREDITO: "Cartão de Crédito",
+  DEBITO: "Cartão de Débito",
+  PIX: "PIX",
+  DINHEIRO: "Dinheiro",
+};
+
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", {
     style: "currency",
@@ -48,6 +61,7 @@ function buildPrintHtml({
   mesaName,
   subtitle,
   items,
+  topSummaryLines,
   extraLines,
   total,
   showSummary = true,
@@ -57,6 +71,7 @@ function buildPrintHtml({
   mesaName: string;
   subtitle: string;
   items: MesaPrintItem[];
+  topSummaryLines?: Array<{ label: string; value: string }>;
   extraLines?: Array<{ label: string; value: string }>;
   total: number;
   showSummary?: boolean;
@@ -89,6 +104,16 @@ function buildPrintHtml({
     .map(
       (line) => `
         <div class="summary-line">
+          <span>${escapeHtml(line.label)}</span>
+          <span>${escapeHtml(line.value)}</span>
+        </div>
+      `,
+    )
+    .join("");
+  const topSummaryLinesHtml = (topSummaryLines ?? [])
+    .map(
+      (line) => `
+        <div class="top-summary-line">
           <span>${escapeHtml(line.label)}</span>
           <span>${escapeHtml(line.value)}</span>
         </div>
@@ -151,6 +176,27 @@ function buildPrintHtml({
             margin-top: 4px;
           }
 
+          .top-summary {
+            margin-top: 10px;
+            border: 1px solid #111827;
+            border-radius: 6px;
+            padding: 8px 10px;
+            background: #f8fafc;
+          }
+
+          .top-summary-line {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 15px;
+            font-weight: 700;
+            margin-top: 2px;
+          }
+
+          .top-summary-line:first-child {
+            margin-top: 0;
+          }
+
           .summary-line {
             display: flex;
             justify-content: space-between;
@@ -204,6 +250,8 @@ function buildPrintHtml({
             <div class="subtitle">${escapeHtml(subtitle)}</div>
             <div class="meta">${escapeHtml(now.toLocaleString("pt-BR"))}</div>
           </div>
+
+          ${topSummaryLinesHtml ? `<div class="top-summary">${topSummaryLinesHtml}</div>` : ""}
 
           <div class="separator"></div>
 
@@ -292,6 +340,7 @@ export default function MesaPrintActions({
   isCouvertEnabled,
   serviceChargePercent,
   isServiceChargeEnabled,
+  payments,
   disabled,
 }: {
   mesaCode: number;
@@ -304,6 +353,7 @@ export default function MesaPrintActions({
   isCouvertEnabled: boolean;
   serviceChargePercent: number;
   isServiceChargeEnabled: boolean;
+  payments: MesaPrintPayment[];
   disabled?: boolean;
 }) {
   const [isContaMenuOpen, setIsContaMenuOpen] = useState(false);
@@ -370,6 +420,41 @@ export default function MesaPrintActions({
       ? (itemsTotal * Math.max(0, serviceChargePercent)) / 100
       : 0;
     const total = itemsTotal + couvertTotal + serviceChargeTotal;
+    const paidTotal = payments.reduce(
+      (sum, payment) => sum + Math.max(0, payment.amount),
+      0,
+    );
+    const remainingTotal = Math.max(0, total - paidTotal);
+    const topSummaryLines = [
+      ...(total > 0
+        ? [{ label: "Total da mesa", value: formatCurrency(total) }]
+        : []),
+      ...(paidTotal > 0
+        ? [{ label: "Total pago", value: formatCurrency(paidTotal) }]
+        : []),
+      ...(remainingTotal > 0
+        ? [{ label: "Saldo restante", value: formatCurrency(remainingTotal) }]
+        : []),
+    ];
+
+    const paymentSummaryByMethod = payments.reduce<
+      Partial<Record<MesaPrintPayment["method"], number>>
+    >((acc, payment) => {
+      const previous = acc[payment.method] ?? 0;
+      acc[payment.method] = previous + Math.max(0, payment.amount);
+      return acc;
+    }, {});
+
+    const paymentLines = (
+      Object.entries(paymentSummaryByMethod) as Array<
+        [MesaPrintPayment["method"], number]
+      >
+    )
+      .filter(([, amount]) => amount > 0)
+      .map(([method, amount]) => ({
+        label: `Pago (${paymentMethodLabels[method]})`,
+        value: formatCurrency(amount),
+      }));
 
     printThermalDocument(
       buildPrintHtml({
@@ -378,6 +463,7 @@ export default function MesaPrintActions({
         mesaName,
         subtitle: "Conta parcial",
         items: sourceItems,
+        topSummaryLines,
         extraLines: [
           {
             label: "Subtotal itens",
@@ -396,6 +482,19 @@ export default function MesaPrintActions({
                 {
                   label: `Taxa de serviço (${serviceChargePercent}%)`,
                   value: formatCurrency(serviceChargeTotal),
+                },
+              ]
+            : []),
+          ...paymentLines,
+          ...(paidTotal > 0
+            ? [
+                {
+                  label: "Total pago",
+                  value: formatCurrency(paidTotal),
+                },
+                {
+                  label: "Restante",
+                  value: formatCurrency(remainingTotal),
                 },
               ]
             : []),

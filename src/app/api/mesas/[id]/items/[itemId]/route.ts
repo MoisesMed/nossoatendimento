@@ -16,6 +16,7 @@ type RouteContext = {
 type TableItemRow = {
   id: string;
   table_id: string;
+  code: number | null;
   name: string;
   quantity: number;
   price: number;
@@ -35,6 +36,7 @@ function toMesaItem(row: TableItemRow) {
   return {
     id: row.id,
     mesaId: row.table_id,
+    code: row.code ?? undefined,
     name: row.name,
     quantity: row.quantity,
     price: row.price,
@@ -99,7 +101,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     .eq("table_id", mesaId)
     .eq("id", itemId)
     .select(
-      "id, table_id, name, quantity, price, original_price, delivered, pricing_type, weight_kg, additional_titles, additional_total",
+      "id, table_id, code, name, quantity, price, original_price, delivered, pricing_type, weight_kg, additional_titles, additional_total",
     )
     .single();
 

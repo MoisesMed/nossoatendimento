@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import AuditoriaFilters from "@/components/auditoria/AuditoriaFilters";
 import { requireTenantContext } from "@/lib/tenantContext";
 
 type AuditLogRow = {
@@ -32,6 +33,26 @@ type ParsedLog = {
   when: string;
   actor: string;
   details: string[];
+  actionKind: "mesa_closure" | "mesa_change" | "mesa_item_change";
+  removedItems?: Array<{ code: string; title: string }>;
+};
+
+type ActionFilter = "todas" | "fechamento" | "mesas" | "itens";
+
+type AuditoriaPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+type DateRangeFilter = {
+  startDate: string;
+  endDate: string;
+  startIso: string;
+  endExclusiveIso: string;
+};
+
+type MesaClosureSummary = {
+  removedItemCount: number;
+  removedItems: Array<{ code: string; title: string }>;
 };
 
 const operationLabel: Record<AuditLogRow["operation"], string> = {
@@ -52,6 +73,48 @@ const statusLabel: Record<string, string> = {
   EM_PREPARO: "Em preparo",
   AGUARDANDO_PAGAMENTO: "Aguardando pagamento",
 };
+
+const DEFAULT_AUDIT_RANGE_DAYS = 3;
+
+function formatDateInputValue(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function parseDateInput(value: string | string[] | undefined) {
+  const normalized = Array.isArray(value) ? value[0] : value;
+
+  if (!normalized || !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function resolveAuditDateRange(
+  searchParams: Record<string, string | string[] | undefined> | undefined,
+): DateRangeFilter {
+  const now = new Date();
+  const defaultEndDate = formatDateInputValue(now);
+  const defaultStart = new Date(now);
+  defaultStart.setDate(defaultStart.getDate() - (DEFAULT_AUDIT_RANGE_DAYS - 1));
+  const defaultStartDate = formatDateInputValue(defaultStart);
+
+  const startDate = parseDateInput(searchParams?.de) ?? defaultStartDate;
+  const endDate = parseDateInput(searchParams?.ate) ?? defaultEndDate;
+
+  const normalizedStart = startDate <= endDate ? startDate : endDate;
+  const normalizedEnd = endDate >= startDate ? endDate : startDate;
+
+  const endExclusiveDate = new Date(`${normalizedEnd}T00:00:00.000Z`);
+  endExclusiveDate.setUTCDate(endExclusiveDate.getUTCDate() + 1);
+
+  return {
+    startDate: normalizedStart,
+    endDate: normalizedEnd,
+    startIso: `${normalizedStart}T00:00:00.000Z`,
+    endExclusiveIso: endExclusiveDate.toISOString(),
+  };
+}
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
@@ -311,6 +374,7 @@ function parseLog(
       when: formatDateTime(log.created_at),
       actor,
       details,
+      actionKind: "mesa_change",
     } satisfies ParsedLog;
   }
 
@@ -344,18 +408,198 @@ function parseLog(
       when: formatDateTime(log.created_at),
       actor,
       details,
+      actionKind: "mesa_item_change",
     } satisfies ParsedLog;
   }
 
   return null;
 }
 
-export default async function AuditoriaPage() {
+function isMesaClosureUpdate(log: AuditLogRow) {
+  if (log.table_name !== "restaurant_tables" || log.operation !== "UPDATE") {
+    return false;
+  }
+
+  const oldRow = asRecord(log.old_data);
+  const newRow = asRecord(log.new_data);
+  const oldStatus = asString(oldRow?.status);
+  const newStatus = asString(newRow?.status);
+
+  return Boolean(oldStatus && oldStatus !== "VAZIA" && newStatus === "VAZIA");
+}
+
+function resolveMesaIdFromTableLog(log: AuditLogRow) {
+  const oldRow = asRecord(log.old_data);
+  const newRow = asRecord(log.new_data);
+
+  return asString(newRow?.id) ?? asString(oldRow?.id) ?? log.record_id;
+}
+
+function resolveMesaIdFromItemLog(log: AuditLogRow) {
+  const oldRow = asRecord(log.old_data);
+  const newRow = asRecord(log.new_data);
+
+  return asString(oldRow?.table_id) ?? asString(newRow?.table_id);
+}
+
+function buildMesaClosureAuditGrouping(logs: AuditLogRow[]) {
+  const itemDeleteWindowMs = 1000 * 120;
+  const consumedDeleteIds = new Set<string>();
+  const closureByUpdateId = new Map<string, MesaClosureSummary>();
+
+  const itemDeleteCandidates = logs.filter(
+    (log) =>
+      log.table_name === "restaurant_table_items" && log.operation === "DELETE",
+  );
+
+  logs.forEach((log) => {
+    if (!isMesaClosureUpdate(log)) {
+      return;
+    }
+
+    const mesaId = resolveMesaIdFromTableLog(log);
+    const updateTime = Date.parse(log.created_at);
+
+    if (!mesaId || Number.isNaN(updateTime)) {
+      return;
+    }
+
+    const matchingDeletes = itemDeleteCandidates.filter((deleteLog) => {
+      if (consumedDeleteIds.has(deleteLog.id)) {
+        return false;
+      }
+
+      if (deleteLog.actor_user_id !== log.actor_user_id) {
+        return false;
+      }
+
+      const deleteMesaId = resolveMesaIdFromItemLog(deleteLog);
+      if (!deleteMesaId || deleteMesaId !== mesaId) {
+        return false;
+      }
+
+      const deleteTime = Date.parse(deleteLog.created_at);
+      if (Number.isNaN(deleteTime) || deleteTime < updateTime) {
+        return false;
+      }
+
+      return deleteTime - updateTime <= itemDeleteWindowMs;
+    });
+
+    if (matchingDeletes.length === 0) {
+      return;
+    }
+
+    matchingDeletes.forEach((deleteLog) => {
+      consumedDeleteIds.add(deleteLog.id);
+    });
+
+    const removedItems = matchingDeletes
+      .map((deleteLog) => {
+        const oldRow = asRecord(deleteLog.old_data);
+        const title = asString(oldRow?.name)?.trim() ?? "Item sem título";
+        const numericCode = asNumber(oldRow?.code);
+        const stringCode = asString(oldRow?.code)?.trim() ?? null;
+        const code =
+          numericCode !== null
+            ? String(numericCode)
+            : stringCode && stringCode.length > 0
+              ? stringCode
+              : "-";
+
+        return {
+          code,
+          title,
+        };
+      })
+      .filter(
+        (item, index, arr) =>
+          arr.findIndex(
+            (current) =>
+              current.code === item.code && current.title === item.title,
+          ) === index,
+      );
+
+    closureByUpdateId.set(log.id, {
+      removedItemCount: matchingDeletes.length,
+      removedItems,
+    });
+  });
+
+  return { closureByUpdateId, consumedDeleteIds };
+}
+
+function parseMesaClosureLog(
+  log: AuditLogRow,
+  actorLabelById: Map<string, string>,
+  tableLabelById: Map<string, string>,
+  summary: MesaClosureSummary,
+) {
+  const oldRow = asRecord(log.old_data);
+  const newRow = asRecord(log.new_data);
+
+  const actor =
+    (log.actor_user_id ? actorLabelById.get(log.actor_user_id) : null) ??
+    "Sistema";
+
+  const mesaLabel =
+    formatMesaLabel(newRow, tableLabelById) !== "Mesa"
+      ? formatMesaLabel(newRow, tableLabelById)
+      : formatMesaLabel(oldRow, tableLabelById);
+
+  const oldStatus = asString(oldRow?.status);
+  const newStatus = asString(newRow?.status);
+
+  const details = [
+    `Status: ${formatStatus(oldStatus)} -> ${formatStatus(newStatus)}`,
+    `${summary.removedItemCount} ${summary.removedItemCount === 1 ? "item foi removido" : "itens foram removidos"} da mesa.`,
+  ];
+
+  details.push("Itens removidos detalhados abaixo.");
+
+  return {
+    id: log.id,
+    title: `${mesaLabel} foi fechada`,
+    operation: "UPDATE",
+    tableName: "Mesas",
+    when: formatDateTime(log.created_at),
+    actor,
+    details,
+    actionKind: "mesa_closure",
+    removedItems: summary.removedItems,
+  } satisfies ParsedLog;
+}
+
+function parseActionFilter(value: string | string[] | undefined): ActionFilter {
+  const normalized = Array.isArray(value) ? value[0] : value;
+
+  if (normalized === "fechamento") {
+    return "fechamento";
+  }
+
+  if (normalized === "mesas") {
+    return "mesas";
+  }
+
+  if (normalized === "itens") {
+    return "itens";
+  }
+
+  return "todas";
+}
+
+export default async function AuditoriaPage({
+  searchParams,
+}: AuditoriaPageProps) {
   const { supabase, tenant, userRole } = await requireTenantContext();
 
   if (userRole !== "DONO") {
     redirect("/mesas");
   }
+
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const selectedAction = parseActionFilter(resolvedSearchParams?.acao);
+  const dateRange = resolveAuditDateRange(resolvedSearchParams);
 
   const { data, error } = await supabase
     .from("audit_logs")
@@ -364,8 +608,10 @@ export default async function AuditoriaPage() {
     )
     .eq("tenant_id", tenant.id)
     .in("table_name", ["restaurant_tables", "restaurant_table_items"])
+    .gte("created_at", dateRange.startIso)
+    .lt("created_at", dateRange.endExclusiveIso)
     .order("created_at", { ascending: false })
-    .limit(300);
+    .limit(500);
 
   const logs = (data ?? []) as AuditLogRow[];
 
@@ -432,24 +678,82 @@ export default async function AuditoriaPage() {
     });
   });
 
-  const parsedLogs = logs
-    .map((log) => parseLog(log, actorLabelById, tableLabelById))
-    .filter((log): log is ParsedLog => log !== null);
+  const { closureByUpdateId, consumedDeleteIds } =
+    buildMesaClosureAuditGrouping(logs);
+
+  const parsedLogs: ParsedLog[] = [];
+
+  logs.forEach((log) => {
+    if (consumedDeleteIds.has(log.id)) {
+      return;
+    }
+
+    const closureSummary = closureByUpdateId.get(log.id);
+    if (closureSummary) {
+      parsedLogs.push(
+        parseMesaClosureLog(
+          log,
+          actorLabelById,
+          tableLabelById,
+          closureSummary,
+        ),
+      );
+      return;
+    }
+
+    const parsed = parseLog(log, actorLabelById, tableLabelById);
+    if (parsed) {
+      parsedLogs.push(parsed);
+    }
+  });
+
+  const filteredLogs = parsedLogs.filter((log) => {
+    if (selectedAction === "todas") {
+      return true;
+    }
+
+    if (selectedAction === "fechamento") {
+      return log.actionKind === "mesa_closure";
+    }
+
+    if (selectedAction === "mesas") {
+      return (
+        log.actionKind === "mesa_change" || log.actionKind === "mesa_closure"
+      );
+    }
+
+    return log.actionKind === "mesa_item_change";
+  });
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[1280px] flex-col pb-28">
       <section className="w-full px-4 pb-5 pt-4 sm:px-6">
+        <div className="mb-4 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4">
+          <h1 className="text-lg font-semibold text-[var(--app-text)]">
+            Auditoria de mesas
+          </h1>
+          <p className="mt-1 text-sm text-[var(--app-muted)]">
+            Histórico de ações com foco operacional para o dono.
+          </p>
+
+          <AuditoriaFilters
+            initialAction={selectedAction}
+            initialStartDate={dateRange.startDate}
+            initialEndDate={dateRange.endDate}
+          />
+        </div>
+
         {error ? (
           <div className="rounded-2xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700">
             Não foi possível carregar os logs de auditoria.
           </div>
-        ) : parsedLogs.length === 0 ? (
+        ) : filteredLogs.length === 0 ? (
           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 text-sm text-[var(--app-muted)]">
             Nenhum log encontrado.
           </div>
         ) : (
           <div className="space-y-3">
-            {parsedLogs.map((log) => (
+            {filteredLogs.map((log) => (
               <article
                 key={log.id}
                 className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4"
@@ -487,6 +791,28 @@ export default async function AuditoriaPage() {
                         <li key={`${log.id}-${index}`}>{detail}</li>
                       ))}
                     </ul>
+
+                    {log.actionKind === "mesa_closure" &&
+                    log.removedItems &&
+                    log.removedItems.length > 0 ? (
+                      <div className="mt-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-2">
+                        <div className="grid grid-cols-[90px_1fr] gap-2 border-b border-[var(--app-border)] pb-1 text-[11px] font-semibold text-[var(--app-muted)]">
+                          <span>Código</span>
+                          <span>Título</span>
+                        </div>
+                        <ul className="mt-1 space-y-1">
+                          {log.removedItems.map((item, index) => (
+                            <li
+                              key={`${log.id}-removed-${item.code}-${item.title}-${index}`}
+                              className="grid grid-cols-[90px_1fr] gap-2 text-xs text-[var(--app-text)]"
+                            >
+                              <span>{item.code}</span>
+                              <span>{item.title}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <p className="mt-2 text-xs text-[var(--app-muted)]">

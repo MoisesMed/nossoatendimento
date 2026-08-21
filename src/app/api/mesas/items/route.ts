@@ -8,6 +8,7 @@ type MembershipRow = {
 type TableItemRow = {
   id: string;
   table_id: string;
+  code: number | null;
   name: string;
   quantity: number;
   price: number;
@@ -23,6 +24,7 @@ function toMesaItem(row: TableItemRow) {
   return {
     id: row.id,
     mesaId: row.table_id,
+    code: row.code ?? undefined,
     name: row.name,
     quantity: row.quantity,
     price: row.price,
@@ -102,7 +104,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("restaurant_table_items")
     .select(
-      "id, table_id, name, quantity, price, original_price, delivered, pricing_type, weight_kg, additional_titles, additional_total",
+      "id, table_id, code, name, quantity, price, original_price, delivered, pricing_type, weight_kg, additional_titles, additional_total",
     )
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: true });

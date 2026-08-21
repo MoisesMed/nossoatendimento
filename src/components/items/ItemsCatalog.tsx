@@ -3280,7 +3280,7 @@ export default function ItemsCatalog({
                     width={1600}
                     height={720}
                     sizes="(max-width: 800px) 100vw, 800px"
-                    quality={88}
+                    quality={90}
                     className="h-full w-full object-cover object-center"
                   />
                 </div>
