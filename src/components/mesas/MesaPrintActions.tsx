@@ -15,8 +15,6 @@ type MesaPrintItem = {
   additionalTotal?: number;
 };
 
-type ContaPrintMode = "PARCIAL" | "TOTAL";
-
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", {
     style: "currency",
@@ -52,6 +50,7 @@ function buildPrintHtml({
   items,
   extraLines,
   total,
+  showSummary = true,
 }: {
   title: string;
   mesaCode: number;
@@ -60,6 +59,7 @@ function buildPrintHtml({
   items: MesaPrintItem[];
   extraLines?: Array<{ label: string; value: string }>;
   total: number;
+  showSummary?: boolean;
 }) {
   const now = new Date();
   const itemsHtml = items
@@ -117,7 +117,7 @@ function buildPrintHtml({
             margin: 0;
             color: #111827;
             background: #ffffff;
-            font-size: 15px;
+            font-size: 16px;
             line-height: 1.35;
           }
 
@@ -130,21 +130,21 @@ function buildPrintHtml({
           }
 
           .title {
-            font-size: 17px;
+            font-size: 17.5px;
             font-weight: 700;
             margin-bottom: 2px;
             text-transform: uppercase;
           }
 
           .subtitle {
-            font-size: 15px;
+            font-size: 16px;
             margin-bottom: 4px;
             text-transform: uppercase;
           }
 
           .separator {
             border-top: 1px dashed #111827;
-            margin: 6px 0;
+            margin: 12px 0;
           }
 
           .summary {
@@ -155,7 +155,7 @@ function buildPrintHtml({
             display: flex;
             justify-content: space-between;
             gap: 8px;
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 600;
             margin-top: 4px;
           }
@@ -176,23 +176,23 @@ function buildPrintHtml({
             justify-content: space-between;
             gap: 8px;
             color: #4b5563;
-            font-size: 13px;
+            font-size: 14px;
             margin-left: 10px;
           }
 
           .total {
             display: flex;
             justify-content: space-between;
-            font-size: 16px;
+            font-size: 17px;
             font-weight: 700;
-            margin-top: 8px;
-            padding-top: 4px;
+            margin-top: 12px;
+            padding-top: 12px;
             border-top: 1px dashed #111827;
           }
 
           .meta {
             color: #4b5563;
-            font-size: 13px;
+            font-size: 14px;
           }
         </style>
       </head>
@@ -209,16 +209,22 @@ function buildPrintHtml({
 
           ${itemsHtml || '<div class="center">Sem itens para imprimir.</div>'}
 
+          ${
+            showSummary
+              ? `
           <div class="separator"></div>
 
           <div class="summary">
             ${extraLinesHtml}
 
-            <div class="total" style="margin-top: 8px;">
+            <div class="total" style="margin-top: 12px;">
               <span>Total</span>
               <span>${formatCurrency(total)}</span>
             </div>
           </div>
+          `
+              : ""
+          }
         </main>
       </body>
     </html>
@@ -333,18 +339,19 @@ export default function MesaPrintActions({
 
     printThermalDocument(
       buildPrintHtml({
-        title: "Comanda",
+        title: "Comanda Cozinha",
         mesaCode,
         mesaName,
-        subtitle: "Itens aguardando envio",
+        subtitle: "Itens para preparo",
         items: waitingItems,
         total,
+        showSummary: false,
       }),
     );
   };
 
-  const handlePrintConta = (mode: ContaPrintMode) => {
-    const sourceItems = mode === "PARCIAL" ? deliveredItems : allItems;
+  const handlePrintConta = () => {
+    const sourceItems = allItems;
 
     if (sourceItems.length === 0) {
       toast.info("Não há itens para emitir esta conta.");
@@ -369,7 +376,7 @@ export default function MesaPrintActions({
         title: "Conta",
         mesaCode,
         mesaName,
-        subtitle: mode === "PARCIAL" ? "Conta parcial" : "Conta total",
+        subtitle: "Conta parcial",
         items: sourceItems,
         extraLines: [
           {
@@ -423,25 +430,16 @@ export default function MesaPrintActions({
             }}
             className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Emitir comanda
+            Emitir comanda cozinha
           </button>
 
           <button
             type="button"
             disabled={disabled}
-            onClick={() => handlePrintConta("PARCIAL")}
+            onClick={() => handlePrintConta()}
             className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             Emitir conta parcial
-          </button>
-
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => handlePrintConta("TOTAL")}
-            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Emitir conta total
           </button>
         </div>
       ) : null}

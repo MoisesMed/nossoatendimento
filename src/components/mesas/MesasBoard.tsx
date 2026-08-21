@@ -466,20 +466,20 @@ function MesaIcon({
         >
           {sideChairs >= 1 ? (
             <span
-              className={`absolute left-0 top-1/2 h-5 w-1.5 -translate-x-3 -translate-y-1/2 rounded ${style.chairStroke}`}
+              className={`absolute left-0.5 top-1/2 h-4 w-1.5 -translate-x-3 -translate-y-1/2 rounded ${style.chairStroke}`}
             />
           ) : null}
 
           {sideChairs >= 2 ? (
             <span
-              className={`absolute right-0 top-1/2 h-5 w-1.5 translate-x-3 -translate-y-1/2 rounded ${style.chairStroke}`}
+              className={`absolute right-0.5 top-1/2 h-4 w-1.5 translate-x-3 -translate-y-1/2 rounded ${style.chairStroke}`}
             />
           ) : null}
 
           {topChairPositions.map((leftPercent, index) => (
             <span
               key={`${code}-top-${index}`}
-              className={`absolute -top-3 h-1.5 w-5 -translate-x-1/2 rounded ${style.chairStroke}`}
+              className={`absolute -top-2.5 h-1.5 w-4 -translate-x-1/2 rounded ${style.chairStroke}`}
               style={{ left: `${leftPercent}%` }}
             />
           ))}
@@ -487,7 +487,7 @@ function MesaIcon({
           {bottomChairPositions.map((leftPercent, index) => (
             <span
               key={`${code}-bottom-${index}`}
-              className={`absolute -bottom-3 h-1.5 w-5 -translate-x-1/2 rounded ${style.chairStroke}`}
+              className={`absolute -bottom-2.5 h-1.5 w-4 -translate-x-1/2 rounded ${style.chairStroke}`}
               style={{ left: `${leftPercent}%` }}
             />
           ))}
@@ -2668,13 +2668,20 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
 
       {mesaForDetail ? (
         <div className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
-          <div className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-xl sm:p-5">
+          <div className="relative max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-xl sm:p-5">
             {(() => {
               const detailStyle = statusStyles[mesaForDetail.status];
               const DetailIcon = detailStyle.icon;
 
               return (
                 <>
+                  {isLoadingMesaItems ? (
+                    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center rounded-2xl bg-[var(--app-surface)]/30 backdrop-blur-[2px]">
+                      <Loader2 className="h-8 w-8 animate-spin text-[var(--app-primary)]" />
+                      Buscando itens
+                    </div>
+                  ) : null}
+
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
                       <p className="text-[12px] font-medium text-[var(--app-muted)]">
@@ -2744,13 +2751,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                           Detalhamento do pedido
                         </p>
 
-                        {isLoadingMesaItems ? (
-                          <div className="mt-2 space-y-2 animate-pulse">
-                            <div className="h-4 w-3/4 rounded bg-[var(--app-surface-muted)]" />
-                            <div className="h-4 w-full rounded bg-[var(--app-surface-muted)]" />
-                            <div className="h-4 w-5/6 rounded bg-[var(--app-surface-muted)]" />
-                          </div>
-                        ) : requestedItemsSummary.length === 0 ? (
+                        {requestedItemsSummary.length === 0 ? (
                           <p className="mt-1 text-xs text-[var(--app-muted)]">
                             Nenhum item lançado na mesa.
                           </p>
@@ -2939,7 +2940,7 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                                 }}
                                 className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
                               >
-                                Ir para pagamento
+                                Fechar mesa e pagar
                               </button>
                             </div>
                           ) : null}
@@ -2953,13 +2954,8 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                           </p>
                         </header>
 
-                        <div className="space-y-1 px-3 py-2">
-                          {isLoadingMesaItems ? (
-                            <div className="space-y-2 py-2 animate-pulse">
-                              <div className="h-10 rounded-lg bg-[var(--app-surface-muted)]" />
-                              <div className="h-10 rounded-lg bg-[var(--app-surface-muted)]" />
-                            </div>
-                          ) : deliveredItems.length === 0 ? (
+                        <div className="relative px-3 py-2">
+                          {deliveredItems.length === 0 ? (
                             <p className="text-sm text-[var(--app-muted)] leading-tight">
                               Nenhum item entregue.
                             </p>
@@ -3045,13 +3041,8 @@ export default function MesasBoard({ initialMesas }: { initialMesas: Mesa[] }) {
                           </p>
                         </header>
 
-                        <div className="space-y-1 px-3 py-2">
-                          {isLoadingMesaItems ? (
-                            <div className="space-y-2 py-2 animate-pulse">
-                              <div className="h-10 rounded-lg bg-[var(--app-surface-muted)]" />
-                              <div className="h-10 rounded-lg bg-[var(--app-surface-muted)]" />
-                            </div>
-                          ) : waitingItems.length === 0 ? (
+                        <div className="relative px-3 py-2">
+                          {waitingItems.length === 0 ? (
                             <p className="text-sm text-[var(--app-muted)] leading-tight">
                               Nenhum item aguardando envio.
                             </p>

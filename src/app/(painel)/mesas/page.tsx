@@ -1,4 +1,5 @@
 import MesasBoard from "@/components/mesas/MesasBoard";
+import MesasBoardProviders from "@/components/mesas/MesasBoardProviders";
 import { redirect } from "next/navigation";
 import { requireTenantContext } from "@/lib/tenantContext";
 
@@ -32,7 +33,9 @@ export default async function MesasPage() {
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[1280px] flex-col pb-28">
       <section className="w-full px-4 pt-4 sm:px-6">
-        <MesasBoard initialMesas={mesas} />
+        <MesasBoardProviders>
+          <MesasBoard initialMesas={mesas} />
+        </MesasBoardProviders>
       </section>
     </div>
   );
