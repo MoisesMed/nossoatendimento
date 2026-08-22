@@ -3109,8 +3109,15 @@ export default function MesasBoard({
       return;
     }
 
-    setMenuMesaId(null);
+    const hasItems = (mesaItemsByMesaId[mesa.id] ?? []).length > 0;
 
+    if (hasItems) {
+      setMenuMesaId(null);
+      toast.error("Remova os itens da mesa ou encerre a comanda antes de deletar.");
+      return;
+    }
+
+    setMenuMesaId(null);
     setMesaPendingDelete(mesa);
   };
 
@@ -3120,8 +3127,15 @@ export default function MesasBoard({
     }
 
     const deletingMesaId = mesaPendingDelete.id;
-    setMesaPendingDelete(null);
+    const hasItems = (mesaItemsByMesaId[deletingMesaId] ?? []).length > 0;
 
+    if (hasItems) {
+      setMesaPendingDelete(null);
+      toast.error("Remova os itens da mesa ou encerre a comanda antes de deletar.");
+      return;
+    }
+
+    setMesaPendingDelete(null);
     await deleteMesaMutation.mutateAsync(deletingMesaId);
   };
 

@@ -128,6 +128,24 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     return NextResponse.json({ error: "Sem permissao para deletar mesa" }, { status: 403 });
   }
 
+  const { data: hasItemsData, error: hasItemsError } = await supabase
+    .from("restaurant_table_items")
+    .select("id")
+    .eq("table_id", id)
+    .eq("tenant_id", tenantId)
+    .limit(1);
+
+  if (hasItemsError) {
+    return NextResponse.json({ error: "Falha ao validar itens da mesa" }, { status: 500 });
+  }
+
+  if ((hasItemsData ?? []).length > 0) {
+    return NextResponse.json(
+      { error: "Remova os itens da mesa ou encerre a comanda antes de deletar." },
+      { status: 409 },
+    );
+  }
+
   const { error } = await supabase
     .from("restaurant_tables")
     .delete()

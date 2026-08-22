@@ -273,11 +273,6 @@ export default function Page() {
           <h1 className="text-xl font-semibold">Acesso do atendimento</h1>
         </div>
 
-        <p className="mb-6 text-xs text-slate-500">
-          Cada usuário pertence ao tenant Lá Bavette Restô. No futuro, o tenant
-          será resolvido por domínio.
-        </p>
-
         {mode === "login" ? (
           <form
             className="space-y-4"
