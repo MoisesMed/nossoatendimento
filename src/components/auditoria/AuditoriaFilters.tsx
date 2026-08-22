@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { FormSelect } from "@/components/ui/FormControls";
 
-type ActionFilter = "todas" | "fechamento" | "mesas" | "itens";
+type ActionFilter = "todas" | "fechamento" | "mesas" | "itens" | "vendas";
 
 type AuditoriaFiltersProps = {
   initialAction: ActionFilter;
@@ -54,6 +54,7 @@ export default function AuditoriaFilters({
       { value: "fechamento", label: "Fechamento de mesas" },
       { value: "mesas", label: "Ações de mesas" },
       { value: "itens", label: "Ações de itens" },
+      { value: "vendas", label: "Vendas" },
     ],
     [],
   );

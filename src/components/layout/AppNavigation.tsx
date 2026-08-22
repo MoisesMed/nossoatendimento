@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   ClipboardList,
+  Landmark,
   LogIn,
   Search,
   SquareKanban,
@@ -30,6 +31,8 @@ const linksByRole = {
   DONO: [
     { href: "/mesas", label: "Mesas" },
     { href: "/cardapio", label: "Cardápio" },
+    { href: "/auditoria", label: "Auditoria" },
+    { href: "/financeiro", label: "Financeiro" },
   ],
 } as const;
 
@@ -53,6 +56,7 @@ export default function AppNavigation({
     "/mesas": UtensilsCrossed,
     "/auditoria": ClipboardList,
     "/cardapio": Search,
+    "/financeiro": Landmark,
     "/items": Search,
     "/perfil": SquareKanban,
   };

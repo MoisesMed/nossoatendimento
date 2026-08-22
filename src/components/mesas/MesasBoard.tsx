@@ -883,6 +883,7 @@ export default function MesasBoard({
   const [isQuickCreateItemModalOpen, setIsQuickCreateItemModalOpen] =
     useState(false);
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
+  const [isAvulsaSaleModalOpen, setIsAvulsaSaleModalOpen] = useState(false);
   const [isPagamentoMenuOpen, setIsPagamentoMenuOpen] = useState(false);
   const [pagamentoMenuAlign, setPagamentoMenuAlign] = useState<
     "open-left" | "open-right"
@@ -930,6 +931,23 @@ export default function MesasBoard({
   const [selectedAdditionalIds, setSelectedAdditionalIds] = useState<string[]>(
     [],
   );
+  const [avulsaSaleItemDraft, setAvulsaSaleItemDraft] = useState<MesaItemDraft>({
+    catalogItemId: "",
+    quantity: "1",
+    weightKg: "",
+  });
+  const [avulsaSaleSelectedAdditionalIds, setAvulsaSaleSelectedAdditionalIds] = useState<string[]>([]);
+  const [avulsaSaleItems, setAvulsaSaleItems] = useState<MesaItem[]>([]);
+  const [avulsaSaleDraft, setAvulsaSaleDraft] = useState({
+    customerName: "",
+    observation: "",
+    subtotal: "0",
+    couvertTotal: "0",
+    serviceChargeTotal: "0",
+    grandTotal: "0",
+    paidTotal: "0",
+    remainingTotal: "0",
+  });
   const [quickCatalogItemForm, setQuickCatalogItemForm] =
     useState<QuickCatalogItemForm>({
       name: "",
@@ -965,7 +983,8 @@ export default function MesasBoard({
     isPaymentModalOpen ||
     openCloseComandaConfirm ||
     isAddItemModalOpen ||
-    isQuickCreateItemModalOpen;
+    isQuickCreateItemModalOpen ||
+    isAvulsaSaleModalOpen;
   const mesasRef = useRef<Mesa[]>(initialMesas);
   const activeMesaDetailIdRef = useRef<string | null>(null);
   const mesaItemsByMesaIdRef = useRef<Record<string, MesaItem[]>>({});
@@ -1990,6 +2009,110 @@ export default function MesasBoard({
     ? selectedAdditionalUnitTotal
     : selectedAdditionalUnitTotal * selectedItemQuantity;
   const selectedItemTotal = selectedBaseTotal + selectedAdditionalTotal;
+  const selectedAvulsaCatalogItem =
+    avulsaSaleItemDraft.catalogItemId.length > 0
+      ? (catalogItems.find(
+          (item) => item.id === avulsaSaleItemDraft.catalogItemId,
+        ) ?? null)
+      : null;
+  const avulsaCatalogItemOptions = useMemo<CatalogItemSelectOption[]>(
+    () =>
+      catalogItems.map((item) => ({
+        value: item.id,
+        label: `${item.code} - ${item.name}`,
+      })),
+    [catalogItems],
+  );
+  const selectedAvulsaCatalogItemOption =
+    avulsaSaleItemDraft.catalogItemId.length > 0
+      ? (avulsaCatalogItemOptions.find(
+          (option) => option.value === avulsaSaleItemDraft.catalogItemId,
+        ) ?? null)
+      : null;
+  const selectedAvulsaCatalogItemAdditionals = useMemo(() => {
+    if (!selectedAvulsaCatalogItem) {
+      return [];
+    }
+
+    return catalogItemAdditionals
+      .filter(
+        (additional) =>
+          additional.active &&
+          additional.menu_item_id === selectedAvulsaCatalogItem.id,
+      )
+      .sort((a, b) => {
+        if (a.sort_order === b.sort_order) {
+          return a.title.localeCompare(b.title);
+        }
+
+        return a.sort_order - b.sort_order;
+      });
+  }, [catalogItemAdditionals, selectedAvulsaCatalogItem]);
+  const selectedAvulsaAdditionalItems = useMemo(
+    () =>
+      selectedAvulsaCatalogItemAdditionals.filter((additional) =>
+        avulsaSaleSelectedAdditionalIds.includes(additional.id),
+      ),
+    [selectedAvulsaCatalogItemAdditionals, avulsaSaleSelectedAdditionalIds],
+  );
+  const selectedAvulsaCatalogItemUnitPrice = useMemo(() => {
+    if (!selectedAvulsaCatalogItem) {
+      return 0;
+    }
+
+    const hasPromotionalPrice =
+      selectedAvulsaCatalogItem.promotional_price !== null &&
+      selectedAvulsaCatalogItem.promotional_price > 0 &&
+      selectedAvulsaCatalogItem.promotional_price < selectedAvulsaCatalogItem.price;
+
+    return hasPromotionalPrice
+      ? Number(selectedAvulsaCatalogItem.promotional_price)
+      : selectedAvulsaCatalogItem.price;
+  }, [selectedAvulsaCatalogItem]);
+  const selectedAvulsaAdditionalUnitTotal = useMemo(
+    () =>
+      selectedAvulsaAdditionalItems.reduce(
+        (total, additional) => total + additional.price,
+        0,
+      ),
+    [selectedAvulsaAdditionalItems],
+  );
+  const isSelectedAvulsaCatalogItemByWeight =
+    selectedAvulsaCatalogItem?.pricing_type === "PESO";
+  const avulsaSaleItemQuantity = Math.max(
+    1,
+    Number(avulsaSaleItemDraft.quantity) || 1,
+  );
+  const avulsaSaleItemWeightKg = Math.max(
+    0,
+    maskedWeightToNumber(avulsaSaleItemDraft.weightKg),
+  );
+  const avulsaSaleBaseTotal = isSelectedAvulsaCatalogItemByWeight
+    ? selectedAvulsaCatalogItemUnitPrice * avulsaSaleItemWeightKg
+    : selectedAvulsaCatalogItemUnitPrice * avulsaSaleItemQuantity;
+  const avulsaSaleAdditionalTotal = isSelectedAvulsaCatalogItemByWeight
+    ? selectedAvulsaAdditionalUnitTotal
+    : selectedAvulsaAdditionalUnitTotal * avulsaSaleItemQuantity;
+  const avulsaSaleItemTotal = avulsaSaleBaseTotal + avulsaSaleAdditionalTotal;
+  const avulsaSaleSubtotal = useMemo(
+    () =>
+      avulsaSaleItems.reduce(
+        (total, item) => total + item.quantity * item.price,
+        0,
+      ),
+    [avulsaSaleItems],
+  );
+  const avulsaSaleCouvertTotal = Number(avulsaSaleDraft.couvertTotal || 0);
+  const avulsaSaleServiceChargeTotal = Number(
+    avulsaSaleDraft.serviceChargeTotal || 0,
+  );
+  const avulsaSaleGrandTotal =
+    avulsaSaleSubtotal + avulsaSaleCouvertTotal + avulsaSaleServiceChargeTotal;
+  const avulsaSalePaidTotal = Number(avulsaSaleDraft.paidTotal || 0);
+  const avulsaSaleRemainingTotal = Math.max(
+    0,
+    avulsaSaleGrandTotal - avulsaSalePaidTotal,
+  );
 
   useEffect(() => {
     const storedPayments = window.localStorage.getItem(
@@ -3113,7 +3236,9 @@ export default function MesasBoard({
 
     if (hasItems) {
       setMenuMesaId(null);
-      toast.error("Remova os itens da mesa ou encerre a comanda antes de deletar.");
+      toast.error(
+        "Remova os itens da mesa ou encerre a comanda antes de deletar.",
+      );
       return;
     }
 
@@ -3131,7 +3256,9 @@ export default function MesasBoard({
 
     if (hasItems) {
       setMesaPendingDelete(null);
-      toast.error("Remova os itens da mesa ou encerre a comanda antes de deletar.");
+      toast.error(
+        "Remova os itens da mesa ou encerre a comanda antes de deletar.",
+      );
       return;
     }
 
@@ -3539,6 +3666,176 @@ export default function MesasBoard({
     setIsQuickCreateItemModalOpen(true);
   };
 
+  const handleOpenAvulsaSaleModal = () => {
+    setAvulsaSaleDraft({
+      customerName: "",
+      observation: "",
+      subtotal: "0",
+      couvertTotal: "0",
+      serviceChargeTotal: "0",
+      grandTotal: "0",
+      paidTotal: "0",
+      remainingTotal: "0",
+    });
+    setAvulsaSaleItemDraft({
+      catalogItemId: "",
+      quantity: "1",
+      weightKg: "",
+    });
+    setAvulsaSaleSelectedAdditionalIds([]);
+    setAvulsaSaleItems([]);
+    setIsAvulsaSaleModalOpen(true);
+  };
+
+  const handleAddAvulsaSaleItem = () => {
+    if (!selectedAvulsaCatalogItem) {
+      toast.error("Selecione um item para adicionar à venda avulsa.");
+      return;
+    }
+
+    const isByWeight = selectedAvulsaCatalogItem.pricing_type === "PESO";
+    const quantity = isByWeight ? 1 : Math.max(1, Number(avulsaSaleItemDraft.quantity) || 1);
+    const weightKg = isByWeight
+      ? Math.max(0, maskedWeightToNumber(avulsaSaleItemDraft.weightKg))
+      : null;
+
+    if (!isByWeight && (quantity < 1 || Number.isNaN(quantity))) {
+      toast.error("Informe uma quantidade válida para o item.");
+      return;
+    }
+
+    if (
+      isByWeight &&
+      (weightKg === null || Number.isNaN(weightKg) || weightKg <= 0)
+    ) {
+      toast.error("Informe um peso válido para o item.");
+      return;
+    }
+
+    const hasCatalogPromotionalPrice =
+      selectedAvulsaCatalogItem.promotional_price !== null &&
+      selectedAvulsaCatalogItem.promotional_price > 0 &&
+      selectedAvulsaCatalogItem.promotional_price < selectedAvulsaCatalogItem.price;
+    const baseAppliedPrice = hasCatalogPromotionalPrice
+      ? Number(selectedAvulsaCatalogItem.promotional_price)
+      : selectedAvulsaCatalogItem.price;
+    const additionalsUnitTotal = selectedAvulsaAdditionalItems.reduce(
+      (total, additional) => total + additional.price,
+      0,
+    );
+    const lineAppliedPrice = isByWeight
+      ? baseAppliedPrice * Math.max(0, weightKg ?? 0) + additionalsUnitTotal
+      : baseAppliedPrice + additionalsUnitTotal;
+    const lineOriginalPrice = hasCatalogPromotionalPrice
+      ? isByWeight
+        ? selectedAvulsaCatalogItem.price * Math.max(0, weightKg ?? 0) + additionalsUnitTotal
+        : selectedAvulsaCatalogItem.price
+      : null;
+
+    const nextItem: MesaItem = {
+      id: crypto.randomUUID(),
+      code: selectedAvulsaCatalogItem.code,
+      name: selectedAvulsaCatalogItem.name,
+      quantity,
+      price: lineAppliedPrice,
+      originalPrice: lineOriginalPrice,
+      delivered: false,
+      pricingType: selectedAvulsaCatalogItem.pricing_type,
+      weightKg: isByWeight ? Math.max(0, weightKg ?? 0) : undefined,
+      additionalTitles: selectedAvulsaAdditionalItems.map(
+        (additional) => additional.title,
+      ),
+      additionalTotal: additionalsUnitTotal,
+    };
+
+    setAvulsaSaleItems((prev) => [...prev, nextItem]);
+    setAvulsaSaleItemDraft({
+      catalogItemId: "",
+      quantity: "1",
+      weightKg: "",
+    });
+    setAvulsaSaleSelectedAdditionalIds([]);
+  };
+
+  const handleRemoveAvulsaSaleItem = (itemId: string) => {
+    setAvulsaSaleItems((prev) => prev.filter((item) => item.id !== itemId));
+  };
+
+  const handleSaveAvulsaSale = async () => {
+    const customerName = avulsaSaleDraft.customerName.trim();
+    const subtotal = avulsaSaleSubtotal;
+    const couvertTotal = Number(avulsaSaleDraft.couvertTotal || 0);
+    const serviceChargeTotal = Number(avulsaSaleDraft.serviceChargeTotal || 0);
+    const grandTotal = subtotal + couvertTotal + serviceChargeTotal;
+    const paidTotal = Number(avulsaSaleDraft.paidTotal || 0);
+    const remainingTotal = Math.max(0, grandTotal - paidTotal);
+
+    if (!customerName) {
+      toast.error("Informe o nome do cliente para registrar a venda avulsa.");
+      return;
+    }
+
+    if (avulsaSaleItems.length === 0) {
+      toast.error("Adicione pelo menos um item à venda avulsa.");
+      return;
+    }
+
+    if (grandTotal <= 0) {
+      toast.error("Informe um valor total maior que zero.");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/sales", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          saleType: "AVULSA",
+          customerName,
+          mesaId: null,
+          mesaCode: null,
+          mesaName: "Venda avulsa",
+          subtotal,
+          couvertTotal,
+          serviceChargeTotal,
+          grandTotal,
+          paidTotal,
+          remainingTotal,
+          observation: avulsaSaleDraft.observation.trim() || null,
+          items: avulsaSaleItems,
+          payments: [],
+        }),
+      });
+
+      const result = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(result.error ?? "Falha ao registrar venda avulsa");
+      }
+
+      toast.success("Venda avulsa registrada com sucesso.");
+      setAvulsaSaleItems([]);
+      setAvulsaSaleItemDraft({
+        catalogItemId: "",
+        quantity: "1",
+        weightKg: "",
+      });
+      setAvulsaSaleSelectedAdditionalIds([]);
+      setIsAvulsaSaleModalOpen(false);
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.error("Não foi possível registrar a venda avulsa.");
+    }
+  };
+
   const handleCreateCatalogItemFromMesa = async (
     event: React.FormEvent<HTMLFormElement>,
   ) => {
@@ -3764,6 +4061,28 @@ export default function MesasBoard({
       });
       await clearMesaItemsMutation.mutateAsync(mesaId);
 
+      await fetch(`/api/mesas/${mesaId}/sales`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sourceId: crypto.randomUUID(),
+          mesaCode: mesaForDetail.code,
+          mesaName: mesaForDetail.name,
+          closedAt: new Date().toISOString(),
+          subtotal,
+          couvertTotal,
+          serviceChargeTotal,
+          grandTotal,
+          paidTotal: paid,
+          remainingTotal: remaining,
+          observation,
+          items: mesaItems,
+          payments: mesaPayments,
+        }),
+      });
+
       persistClosedComanda({
         id: crypto.randomUUID(),
         mesaId,
@@ -3833,28 +4152,38 @@ export default function MesasBoard({
   return (
     <>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div className="block max-w-xs space-y-2">
-          <label className="inline-flex items-center mr-2 gap-2 text-xs font-medium text-[var(--app-text)]">
-            <input
-              type="checkbox"
-              checked={isDailyCouvertEnabled}
-              onChange={(event) =>
-                handleToggleGlobalCouvert(event.target.checked)
-              }
-            />
-            Habilitar couvert
-          </label>
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2">
+            <label className="inline-flex items-center mr-2 gap-2 text-xs font-medium text-[var(--app-text)]">
+              <input
+                type="checkbox"
+                checked={isDailyCouvertEnabled}
+                onChange={(event) =>
+                  handleToggleGlobalCouvert(event.target.checked)
+                }
+              />
+              Habilitar couvert
+            </label>
 
-          <label className="inline-flex items-center gap-2 text-xs font-medium text-[var(--app-text)]">
-            <input
-              type="checkbox"
-              checked={isDailyServiceChargeEnabled}
-              onChange={(event) =>
-                handleToggleGlobalServiceCharge(event.target.checked)
-              }
-            />
-            Habilitar taxa de serviço
-          </label>
+            <label className="inline-flex items-center gap-2 text-xs font-medium text-[var(--app-text)]">
+              <input
+                type="checkbox"
+                checked={isDailyServiceChargeEnabled}
+                onChange={(event) =>
+                  handleToggleGlobalServiceCharge(event.target.checked)
+                }
+              />
+              Habilitar taxa de serviço
+            </label>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleOpenAvulsaSaleModal}
+            className="inline-flex items-center gap-2 self-start rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-semibold text-[var(--app-text)] transition hover:opacity-85"
+          >
+            <Plus className="h-4 w-4" /> Nova venda avulsa
+          </button>
         </div>
 
         <button
@@ -3862,7 +4191,7 @@ export default function MesasBoard({
           onClick={() => setOpenLegendModal(true)}
           className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text)] transition hover:opacity-85"
         >
-          <Info className="h-4 w-4" /> Ver legenda de status
+          <Info className="h-4 w-4" /> Legenda de status
         </button>
       </div>
 
@@ -3943,6 +4272,418 @@ export default function MesasBoard({
           );
         })}
       </div>
+
+      {isAvulsaSaleModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">
+          <div className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-md sm:p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-[var(--app-text)]">
+                Nova venda avulsa
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsAvulsaSaleModalOpen(false)}
+                className="rounded-full p-1 text-[var(--app-muted)] hover:opacity-80"
+                aria-label="Fechar modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block space-y-1">
+                <span className="text-sm font-medium text-[var(--app-text)]">
+                  Cliente
+                </span>
+                <input
+                  value={avulsaSaleDraft.customerName}
+                  onChange={(event) =>
+                    setAvulsaSaleDraft((prev) => ({
+                      ...prev,
+                      customerName: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+                  placeholder="Ex: Cliente balcão"
+                />
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-sm font-medium text-[var(--app-text)]">
+                  Observação
+                </span>
+                <textarea
+                  value={avulsaSaleDraft.observation}
+                  onChange={(event) =>
+                    setAvulsaSaleDraft((prev) => ({
+                      ...prev,
+                      observation: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+                  placeholder="Ex: Pedido entregue no balcão"
+                />
+              </label>
+
+              <section className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-[var(--app-text)]">
+                    Itens da venda
+                  </p>
+                  <span className="text-[11px] font-medium text-[var(--app-muted)]">
+                    {avulsaSaleItems.length} {avulsaSaleItems.length === 1 ? "item" : "itens"}
+                  </span>
+                </div>
+
+                <label className="mt-3 block min-w-0 space-y-1">
+                  <span className="block truncate whitespace-nowrap text-[12px] font-medium text-[var(--app-muted)]">
+                    Item do catálogo
+                  </span>
+                  <Select<CatalogItemSelectOption, false>
+                    options={avulsaCatalogItemOptions}
+                    value={selectedAvulsaCatalogItemOption}
+                    isDisabled={isLoadingCatalogItems}
+                    isLoading={isLoadingCatalogItems}
+                    isSearchable
+                    menuPosition="fixed"
+                    menuPortalTarget={
+                      typeof document !== "undefined" ? document.body : null
+                    }
+                    placeholder={
+                      isLoadingCatalogItems
+                        ? "Carregando itens..."
+                        : "Selecione ou pesquise o item"
+                    }
+                    noOptionsMessage={() => "Nenhum item encontrado"}
+                    components={{
+                      DropdownIndicator: ItemDropdownIndicator,
+                      IndicatorSeparator: () => null,
+                    }}
+                    styles={itemSelectStyles}
+                    onChange={(nextOption) => {
+                      const selectedOption =
+                        nextOption as SingleValue<CatalogItemSelectOption>;
+
+                      setAvulsaSaleSelectedAdditionalIds([]);
+
+                      if (!selectedOption) {
+                        setAvulsaSaleItemDraft((prev) => ({
+                          ...prev,
+                          catalogItemId: "",
+                          quantity: "1",
+                          weightKg: "",
+                        }));
+                        return;
+                      }
+
+                      setAvulsaSaleItemDraft((prev) => ({
+                        ...prev,
+                        catalogItemId: selectedOption.value,
+                        quantity: "1",
+                        weightKg: "",
+                      }));
+                    }}
+                  />
+                </label>
+
+                {selectedAvulsaCatalogItem ? (
+                  <>
+                    {isSelectedAvulsaCatalogItemByWeight ? (
+                      <label className="mt-3 block min-w-0 space-y-1">
+                        <span className="block truncate whitespace-nowrap text-[12px] font-medium text-[var(--app-muted)]">
+                          Peso (kg)
+                        </span>
+                        <input
+                          value={avulsaSaleItemDraft.weightKg}
+                          onChange={(event) =>
+                            setAvulsaSaleItemDraft((prev) => ({
+                              ...prev,
+                              weightKg: formatWeightMaskInput(event.target.value),
+                            }))
+                          }
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="0,000"
+                          className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-2 text-sm text-[var(--app-text)] outline-none"
+                        />
+                      </label>
+                    ) : (
+                      <label className="mt-3 block min-w-0 space-y-1">
+                        <span className="block truncate whitespace-nowrap text-[12px] font-medium text-[var(--app-muted)]">
+                          Quantidade
+                        </span>
+                        <input
+                          value={avulsaSaleItemDraft.quantity}
+                          onChange={(event) =>
+                            setAvulsaSaleItemDraft((prev) => ({
+                              ...prev,
+                              quantity: event.target.value,
+                            }))
+                          }
+                          type="number"
+                          min={1}
+                          placeholder="Qtd"
+                          className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-2 text-sm text-[var(--app-text)] outline-none"
+                        />
+                      </label>
+                    )}
+
+                    <section className="mt-3 rounded-lg border border-[var(--app-border)] px-3 py-2">
+                      <p className="text-sm font-medium text-[var(--app-text)]">
+                        Adicionais disponíveis
+                      </p>
+
+                      {selectedAvulsaCatalogItemAdditionals.length === 0 ? (
+                        <p className="mt-2 text-sm text-[var(--app-muted)]">
+                          Este item não possui adicionais.
+                        </p>
+                      ) : (
+                        <div className="mt-2 space-y-2">
+                          {selectedAvulsaCatalogItemAdditionals.map((additional) => (
+                            <label
+                              key={additional.id}
+                              className="flex items-start justify-between gap-2 text-sm"
+                            >
+                              <span className="flex items-start gap-2 text-[var(--app-text)]">
+                                <input
+                                  type="checkbox"
+                                  checked={avulsaSaleSelectedAdditionalIds.includes(
+                                    additional.id,
+                                  )}
+                                  onChange={(event) => {
+                                    const checked = event.target.checked;
+
+                                    setAvulsaSaleSelectedAdditionalIds((prev) => {
+                                      if (checked) {
+                                        return [...prev, additional.id];
+                                      }
+
+                                      return prev.filter((id) => id !== additional.id);
+                                    });
+                                  }}
+                                />
+                                <span>
+                                  <span className="block font-medium leading-tight">
+                                    {additional.title}
+                                  </span>
+                                  {additional.description ? (
+                                    <span className="block text-xs text-[var(--app-muted)] leading-tight">
+                                      {additional.description}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </span>
+                              <span className="text-[var(--app-muted)]">
+                                + {formatCurrency(additional.price)}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+
+                    <section className="mt-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2">
+                      <div className="flex items-center justify-between gap-2 text-sm text-[var(--app-text)]">
+                        <span>
+                          {isSelectedAvulsaCatalogItemByWeight
+                            ? "Preço base por kg"
+                            : "Preço base"}
+                        </span>
+                        <span>
+                          {formatCurrency(selectedAvulsaCatalogItemUnitPrice)}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between gap-2 text-sm text-[var(--app-text)]">
+                        <span>
+                          {isSelectedAvulsaCatalogItemByWeight
+                            ? "Adicionais"
+                            : "Adicionais por unidade"}
+                        </span>
+                        <span>{formatCurrency(selectedAvulsaAdditionalUnitTotal)}</span>
+                      </div>
+                      {!isSelectedAvulsaCatalogItemByWeight ? (
+                        <div className="mt-1 flex items-center justify-between gap-2 text-sm text-[var(--app-text)]">
+                          <span>Valor por unidade</span>
+                          <span>{formatCurrency(avulsaSaleItemTotal)}</span>
+                        </div>
+                      ) : null}
+                      <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--app-border)] pt-2 text-base font-semibold text-[var(--app-text)]">
+                        <span>
+                          {isSelectedAvulsaCatalogItemByWeight
+                            ? `Total (${avulsaSaleItemWeightKg.toLocaleString(
+                                "pt-BR",
+                                {
+                                  minimumFractionDigits: 3,
+                                  maximumFractionDigits: 3,
+                                },
+                              )} kg)`
+                            : `Total (${avulsaSaleItemQuantity}x)`}
+                        </span>
+                        <span>{formatCurrency(avulsaSaleItemTotal)}</span>
+                      </div>
+                    </section>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleAddAvulsaSaleItem()}
+                      className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm font-semibold text-[var(--app-text)]"
+                    >
+                      <Plus className="h-4 w-4" /> Adicionar item
+                    </button>
+                  </>
+                ) : null}
+
+                {avulsaSaleItems.length > 0 ? (
+                  <ul className="mt-3 space-y-2">
+                    {avulsaSaleItems.map((item) => (
+                      <li
+                        key={item.id}
+                        className="flex items-start justify-between gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-2"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-[var(--app-text)]">
+                            {item.name}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-[var(--app-muted)]">
+                            {item.pricingType === "PESO" && item.weightKg
+                              ? `${item.weightKg.toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 3,
+                                  maximumFractionDigits: 3,
+                                })} kg`
+                              : `${item.quantity}x`}
+                            {item.additionalTitles && item.additionalTitles.length > 0
+                              ? ` • ${item.additionalTitles.join(", ")}`
+                              : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-[var(--app-text)]">
+                            {formatCurrency(item.quantity * item.price)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAvulsaSaleItem(item.id)}
+                            className="rounded-md p-1 text-[var(--app-muted)] hover:opacity-80"
+                            aria-label={`Remover ${item.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-3 text-xs text-[var(--app-muted)]">
+                    Nenhum item adicionado ainda.
+                  </p>
+                )}
+              </section>
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-[var(--app-muted)]">
+                    Subtotal
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    readOnly
+                    value={avulsaSaleSubtotal.toFixed(2)}
+                    className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-[var(--app-muted)]">
+                    Couvert
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={avulsaSaleDraft.couvertTotal}
+                    onChange={(event) =>
+                      setAvulsaSaleDraft((prev) => ({
+                        ...prev,
+                        couvertTotal: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-[var(--app-muted)]">
+                    Taxa de serviço
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={avulsaSaleDraft.serviceChargeTotal}
+                    onChange={(event) =>
+                      setAvulsaSaleDraft((prev) => ({
+                        ...prev,
+                        serviceChargeTotal: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-[var(--app-muted)]">
+                    Total
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    readOnly
+                    value={avulsaSaleGrandTotal.toFixed(2)}
+                    className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-[var(--app-muted)]">
+                    Pago
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={avulsaSaleDraft.paidTotal}
+                    onChange={(event) =>
+                      setAvulsaSaleDraft((prev) => ({
+                        ...prev,
+                        paidTotal: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-[var(--app-muted)]">
+                    Restante
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    readOnly
+                    value={avulsaSaleRemainingTotal.toFixed(2)}
+                    className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-primary)]"
+                  />
+                </label>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void handleSaveAvulsaSale()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--app-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--app-primary-contrast)] transition hover:opacity-90"
+              >
+                Registrar venda avulsa
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {openCreateModal ? (
         <div className="fixed inset-0 z-40 flex items-end overflow-y-auto bg-black/45 p-3 sm:items-center sm:justify-center">

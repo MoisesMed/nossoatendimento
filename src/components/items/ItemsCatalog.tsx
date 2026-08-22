@@ -3351,23 +3351,6 @@ export default function ItemsCatalog({
                       key={item.id}
                       draggable={canManageItems && !isItemCardBusy}
                       aria-busy={isItemCardBusy}
-                      onClick={() => {
-                        if (!canManageItems && !isItemCardBusy) {
-                          setPreviewItem(item);
-                        }
-                      }}
-                      onKeyDown={(event) => {
-                        if (canManageItems || isItemCardBusy) {
-                          return;
-                        }
-
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setPreviewItem(item);
-                        }
-                      }}
-                      role={!canManageItems ? "button" : undefined}
-                      tabIndex={!canManageItems ? 0 : undefined}
                       onDragStart={(event) => {
                         if (isItemCardBusy) {
                           event.preventDefault();
@@ -3464,10 +3447,8 @@ export default function ItemsCatalog({
                         "relative flex h-full flex-col border-t border-[var(--app-border)] bg-white px-0 py-3 last:border-b sm:py-4 md:rounded-md md:border md:px-2 md:shadow-[0_1px_4px_rgba(15,23,42,0.06)] md:last:border",
                         canManageItems
                           ? "cursor-grab active:cursor-grabbing"
-                          : "cursor-pointer",
-                        !canManageItems
-                          ? "transition hover:bg-[var(--app-surface-muted)]"
-                          : "",
+                          : "cursor-default",
+                        !canManageItems ? "transition" : "",
                         !item.visible_in_menu ? "opacity-60" : "",
                         isItemCardBusy ? "opacity-70" : "",
                         draggingItemId === item.id

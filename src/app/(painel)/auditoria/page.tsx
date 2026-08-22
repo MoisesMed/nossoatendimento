@@ -33,11 +33,11 @@ type ParsedLog = {
   when: string;
   actor: string;
   details: string[];
-  actionKind: "mesa_closure" | "mesa_change" | "mesa_item_change";
+  actionKind: "mesa_closure" | "mesa_change" | "mesa_item_change" | "sales";
   removedItems?: Array<{ code: string; title: string }>;
 };
 
-type ActionFilter = "todas" | "fechamento" | "mesas" | "itens";
+type ActionFilter = "todas" | "fechamento" | "mesas" | "itens" | "vendas";
 
 type AuditoriaPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -118,6 +118,7 @@ function resolveAuditDateRange(
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -378,6 +379,38 @@ function parseLog(
     } satisfies ParsedLog;
   }
 
+  if (log.table_name === "restaurant_sales") {
+    const rowWithName = newRow ?? oldRow;
+    const customerName = formatText(asString(rowWithName?.customer_name));
+    const saleLabel = customerName !== "-" ? customerName : "Venda avulsa";
+    const saleType = asString(rowWithName?.sale_type) === "MESA" ? "Mesa" : "Avulsa";
+    const titleByOperation: Record<AuditLogRow["operation"], string> = {
+      INSERT: `${saleLabel} registrada como venda ${saleType.toLowerCase()}`,
+      UPDATE: `${saleLabel} atualizada como venda ${saleType.toLowerCase()}`,
+      DELETE: `${saleLabel} removida como venda ${saleType.toLowerCase()}`,
+    };
+
+    const details = [
+      `Tipo: ${saleType}`,
+      `Valor total: ${formatCurrency(asNumber(rowWithName?.grand_total) ?? 0)}`,
+    ];
+
+    if (rowWithName?.mesa_name) {
+      details.push(`Mesa: ${formatText(asString(rowWithName?.mesa_name))}`);
+    }
+
+    return {
+      id: log.id,
+      title: titleByOperation[log.operation],
+      operation: log.operation,
+      tableName: "Vendas",
+      when: formatDateTime(log.created_at),
+      actor,
+      details,
+      actionKind: "sales",
+    } satisfies ParsedLog;
+  }
+
   if (log.table_name === "restaurant_table_items") {
     const rowWithName = newRow ?? oldRow;
     const itemName = formatText(asString(rowWithName?.name));
@@ -585,6 +618,10 @@ function parseActionFilter(value: string | string[] | undefined): ActionFilter {
     return "itens";
   }
 
+  if (normalized === "vendas") {
+    return "vendas";
+  }
+
   return "todas";
 }
 
@@ -607,7 +644,7 @@ export default async function AuditoriaPage({
       "id, table_name, operation, record_id, actor_user_id, old_data, new_data, created_at",
     )
     .eq("tenant_id", tenant.id)
-    .in("table_name", ["restaurant_tables", "restaurant_table_items"])
+    .in("table_name", ["restaurant_tables", "restaurant_table_items", "restaurant_sales"])
     .gte("created_at", dateRange.startIso)
     .lt("created_at", dateRange.endExclusiveIso)
     .order("created_at", { ascending: false })
@@ -720,6 +757,10 @@ export default async function AuditoriaPage({
       return (
         log.actionKind === "mesa_change" || log.actionKind === "mesa_closure"
       );
+    }
+
+    if (selectedAction === "vendas") {
+      return log.actionKind === "sales";
     }
 
     return log.actionKind === "mesa_item_change";
